@@ -158,71 +158,6 @@ async function loadTasksForCurrentView(): Promise<void> {
     for (const t of urgentNoDeadlineTasks) visibleTaskById.set(t.id, t);
 }
 
-function renderShell(): void {
-    const app = document.querySelector<HTMLDivElement>("#app");
-    if (!app) throw new Error("#app not found");
-
-    app.innerHTML = `
-        <main class="app-shell">
-            <section class="left-panel">
-                <header class="panel-header">
-                    <div>
-                        <h1>imminenti</h1>
-                        <div id="week-range" class="week-range"></div>
-                    </div>
-                    <div class="header-actions">
-                        <button id="prev-week-btn" class="btn" type="button" title="Previous week (h)">Prev</button>
-                        <button id="next-week-btn" class="btn" type="button" title="Next week (l)">Next</button>
-                    </div>
-                </header>
-
-                <div id="week-grid" class="week-grid"></div>
-            </section>
-
-            <aside class="right-panel">
-                <header class="panel-header tight">
-                    <div>
-                        <h2>Urgent / no deadline</h2>
-                        <div class="subtle">Stored in SQLite</div>
-                    </div>
-                    <button id="add-urgent-btn" class="btn primary" type="button">Add</button>
-                </header>
-                <div id="urgent-list" class="urgent-list"></div>
-            </aside>
-        </main>
-
-        <dialog id="task-dialog" class="task-dialog">
-            <form id="task-form" method="dialog" class="dialog-body">
-                <h3 id="dialog-title">Task</h3>
-                <div id="dialog-context" class="dialog-context"></div>
-
-                <label class="field">
-                    <span>Title</span>
-                    <input id="task-title-input" name="title" type="text" maxlength="200" required />
-                </label>
-
-                <label class="field">
-                    <span>Notes</span>
-                    <textarea id="task-notes-input" name="notes" rows="4" maxlength="2000"></textarea>
-                </label>
-
-                <label id="task-urgent-field" class="checkbox-row">
-                    <input id="task-urgent-input" name="isUrgent" type="checkbox" />
-                    <span>Urgent</span>
-                </label>
-
-                <div class="dialog-actions">
-                    <button id="delete-task-btn" class="btn danger" type="button">Delete</button>
-                    <div class="dialog-actions-right">
-                        <button id="cancel-task-btn" class="btn" type="button">Cancel</button>
-                        <button id="save-task-btn" class="btn primary" type="submit">Save</button>
-                    </div>
-                </div>
-            </form>
-        </dialog>
-    `;
-}
-
 function renderWeekGrid(): void {
     const weekGrid    = document.querySelector<HTMLDivElement>("#week-grid");
     const weekRangeEl = document.querySelector<HTMLDivElement>("#week-range");
@@ -231,7 +166,7 @@ function renderWeekGrid(): void {
     const weekKeys = getWeekDateKeys(currentWeekStart);
     const grouped  = byDueDateMap(weekTasks);
 
-    weekRangeEl.textContent = `${formatWeekRange(currentWeekStart)}  |  keys: l=prev, h=next`;
+    weekRangeEl.textContent = `${formatWeekRange(currentWeekStart)}`;
 
     const renderDayBox = (weekIndex: number): string => {
         const dateKey = weekKeys[weekIndex];
@@ -551,7 +486,6 @@ function wireEvents(): void {
 }
 
 async function bootstrap(): Promise<void> {
-    renderShell();
     wireEvents();
 
     const weekGrid = document.querySelector<HTMLDivElement>("#week-grid");
