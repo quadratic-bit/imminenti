@@ -230,6 +230,34 @@ textarea {
     border-color: var(--accent-2);
 }
 
+/* highlight current day */
+.day-box.today {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.22);
+}
+
+.day-box.today .day-label-strip {
+    border-right-color: var(--accent);
+}
+
+/* dim finished days */
+.day-box.past {
+    opacity: 0.78;
+}
+
+.day-box.past .task-row.filled {
+    opacity: 0.78;
+}
+
+.day-box.past .task-row.empty {
+    opacity: 0.35;
+}
+
+/* reduce urgency in finished days */
+.day-box.past .urgent-pill {
+    opacity: 0.85;
+}
+
 .day-label-strip {
     position: relative;
     border-right: 1px solid var(--border);

@@ -171,6 +171,7 @@ function renderWeekGrid(): void {
     if (!weekGrid || !weekRangeEl) return;
 
     const weekKeys = getWeekDateKeys(currentWeekStart);
+    const todayKey = dateToKey(new Date());
     const grouped  = byDueDateMap(weekTasks);
 
     weekRangeEl.textContent = `${formatWeekRange(currentWeekStart)}`;
@@ -202,8 +203,11 @@ function renderWeekGrid(): void {
             `;
         }).join("");
 
+        const isToday = dateKey === todayKey;
+        const isPast  = dateKey < todayKey; // safe because YYYY-MM-DD
+
         return `
-            <div class="day-box" data-day-date="${dateKey}" title="Click to add task">
+            <div class="day-box ${isToday ? "today" : ""} ${isPast ? "past" : ""}" data-day-date="${dateKey}" title="Click to add task">
                 <div class="day-label-strip">
                     <div class="day-label-rot day-label-week">${DAY_LABELS[weekIndex]}</div>
                     <div class="day-label-rot day-label-date">${escapeHtml(formatMonthDay(dateKey))}</div>
