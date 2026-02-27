@@ -238,16 +238,25 @@ textarea {
 
 .day-label-rot {
     position: absolute;
-    top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%) rotate(-90deg);
     transform-origin: center;
     font-size: 0.74rem;
-    letter-spacing: 0.14em;
-    text-transform: lowercase;
+    letter-spacing: 0.08em;
     color: var(--muted-strong);
     white-space: nowrap;
     user-select: none;
+}
+
+.day-label-week {
+    bottom: 1.7em;
+    transform: translate(-50%, 0) rotate(-90deg);
+}
+
+.day-label-date {
+    top: 2em;
+    transform: translate(-50%, 0) rotate(-90deg);
+    letter-spacing: 0.02em;
+    color: var(--muted);
 }
 
 .day-rows {

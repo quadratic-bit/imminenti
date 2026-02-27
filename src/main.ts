@@ -86,6 +86,13 @@ function formatLongDate(key: string): string {
     }).format(keyToDate(key));
 }
 
+function formatMonthDay(key: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+    }).format(keyToDate(key));
+}
+
 function byDueDateMap(tasks: TaskRow[]): Map<string, TaskRow[]> {
     const m = new Map<string, TaskRow[]>();
     for (const t of tasks) {
@@ -198,7 +205,8 @@ function renderWeekGrid(): void {
         return `
             <div class="day-box" data-day-date="${dateKey}" title="Click to add task">
                 <div class="day-label-strip">
-                    <div class="day-label-rot">${DAY_LABELS[weekIndex]}</div>
+                    <div class="day-label-rot day-label-week">${DAY_LABELS[weekIndex]}</div>
+                    <div class="day-label-rot day-label-date">${escapeHtml(formatMonthDay(dateKey))}</div>
                 </div>
                 <div class="day-rows" style="grid-template-rows: repeat(${slots}, minmax(0, 1fr));">
                     ${rows}
