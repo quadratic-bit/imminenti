@@ -1,26 +1,62 @@
 :root {
     color-scheme: dark;
-    --bg:        #0f1115;
-    --panel:     #171a21;
-    --panel-2:   #13161c;
-    --border:    #2a3140;
-    --muted:     #8b93a7;
-    --text:      #e7ebf4;
-    --accent:    #7aa2ff;
-    --danger:    #e06161;
-    --row:       #1b202a;
-    --row-hover: #242b37;
-    --empty:     #161a22;
-    --label-bg:  #10141b;
+
+    /* Catppuccin Mocha palette */
+
+    /* Core surfaces */
+    --bg:       #11111b; /* crust  */
+    --panel:    #1e1e2e; /* base   */
+    --panel-2:  #181825; /* mantle */
+
+    /* Elevation / borders */
+    --surface-0: #313244;
+    --surface-1: #45475a;
+    --surface-2: #585b70;
+    --border:    var(--surface-0);
+
+    /* Text */
+    --text:         #cdd6f4;
+    --muted:        #a6adc8; /* subtext 0 */
+    --muted-strong: #bac2de; /* subtext 1 */
+
+    /* Accents / states */
+    --accent:    #89b4fa;  /* blue     */
+    --accent-2:  #b4befe;  /* lavender */
+    --danger:    #f38ba8;  /* red      */
+    --danger-2:  #eba0ac;  /* maroon   */
+    --success:   #a6e3a1;  /* green    */
+    --warning:   #fab387;  /* yellow   */
+
+    /* Component tokens */
+    --btn-bg:         var(--surface-0);
+    --btn-hover:      var(--surface-1);
+    --btn-border:     var(--surface-1);
+
+    --btn-primary-bg:    var(--accent);
+    --btn-primary-hover: var(--accent-2);
+    --btn-primary-text:  var(--panel);
+
+    --btn-danger-bg:     var(--danger);
+    --btn-danger-hover:  var(--danger-2);
+    --btn-danger-text:   var(--panel);
+
+    --day-bg:        var(--panel-2);
+    --label-bg:      var(--bg);
+    --row-empty-bg:  var(--panel-2);
+    --row-bg:        var(--surface-0);
+    --row-hover-bg:  var(--surface-1);
+
+    --input-bg:      var(--bg);
+    --dialog-bg:     var(--panel);
+
+    --focus-shadow:  0 0 0 2px rgba(137, 180, 250, 0.18);
 }
 
 * {
     box-sizing: border-box;
 }
 
-html,
-body,
-#app {
+html, body {
     width: 100%;
     height: 100%;
     margin: 0;
@@ -39,6 +75,7 @@ textarea {
     color: inherit;
 }
 
+/* Layout */
 .app-shell {
     height: 100vh;
     width: 100vw;
@@ -109,36 +146,42 @@ textarea {
     gap: 8px;
 }
 
+/* Buttons */
 .btn {
-    background: #202633;
-    border: 1px solid var(--border);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
     border-radius: 8px;
     padding: 6px 10px;
     cursor: pointer;
 }
 
 .btn:hover {
-    background: #2a3242;
+    background: var(--btn-hover);
 }
 
 .btn.primary {
-    background: #27385f;
-    border-color: #33518f;
+    background: var(--btn-primary-bg);
+    border-color: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
 }
 
 .btn.primary:hover {
-    background: #314a7d;
+    background: var(--btn-primary-hover);
+    border-color: var(--btn-primary-hover);
 }
 
 .btn.danger {
-    background: #4a2424;
-    border-color: #6e3030;
+    background: var(--btn-danger-bg);
+    border-color: var(--btn-danger-bg);
+    color: var(--btn-danger-text);
 }
 
 .btn.danger:hover {
-    background: #622d2d;
+    background: var(--btn-danger-hover);
+    border-color: var(--btn-danger-hover);
 }
 
+/* Week grid */
 .week-grid {
     min-height: 0;
     padding: 10px;
@@ -167,22 +210,24 @@ textarea {
 .empty-grid-cell {
     border: 1px dashed var(--border);
     border-radius: 10px;
-    background: #12161e;
+    background: var(--panel-2);
 }
 
+/* Day boxes */
 .day-box {
     min-height: 0;
+    height: 100%;
     display: grid;
     grid-template-columns: 40px 1fr;
     border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
-    background: #151922;
+    background: var(--day-bg);
     cursor: pointer;
 }
 
 .day-box:hover {
-    border-color: #3a4560;
+    border-color: var(--accent-2);
 }
 
 .day-label-strip {
@@ -200,7 +245,7 @@ textarea {
     font-size: 0.74rem;
     letter-spacing: 0.14em;
     text-transform: lowercase;
-    color: #b5bdd1;
+    color: var(--muted-strong);
     white-space: nowrap;
     user-select: none;
 }
@@ -212,23 +257,24 @@ textarea {
     padding: 5px;
 }
 
+/* Rows */
 .task-row {
     min-width: 0;
     min-height: 0;
     border: 1px solid transparent;
     border-radius: 7px;
     padding: 4px 6px;
-    background: var(--empty);
+    background: var(--row-empty-bg);
 }
 
 .task-row.empty {
-    opacity: 0.45;
-    border-color: #1c2130;
+    opacity: 0.55;
+    border-color: var(--surface-0);
 }
 
 .task-row.filled {
-    background: var(--row);
-    border-color: #273144;
+    background: var(--row-bg);
+    border-color: var(--surface-1);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -236,8 +282,8 @@ textarea {
 }
 
 .task-row.filled:hover {
-    background: var(--row-hover);
-    border-color: #34435d;
+    background: var(--row-hover-bg);
+    border-color: var(--surface-2);
 }
 
 .row-main {
@@ -265,17 +311,19 @@ textarea {
     text-overflow: ellipsis;
 }
 
+/* Urgent pill */
 .urgent-pill {
     flex: 0 0 auto;
     font-size: 0.65rem;
-    padding: 2px 5px;
+    padding: 2px 6px;
     border-radius: 999px;
-    border: 1px solid #6d4a4a;
-    background: #3f2323;
-    color: #ffc0c0;
+    border: 1px solid var(--danger-2);
+    background: var(--danger);
+    color: var(--panel);
     text-transform: lowercase;
 }
 
+/* Right list */
 .urgent-list {
     min-height: 0;
     overflow: auto;
@@ -288,16 +336,16 @@ textarea {
 .urgent-item {
     width: 100%;
     text-align: left;
-    background: var(--row);
-    border: 1px solid #3a2d2d;
+    background: var(--row-bg);
+    border: 1px solid var(--danger-2);
     border-radius: 10px;
     padding: 10px;
     cursor: pointer;
 }
 
 .urgent-item:hover {
-    background: #2a2222;
-    border-color: #574040;
+    background: var(--row-hover-bg);
+    border-color: var(--danger);
 }
 
 .urgent-item-title {
@@ -313,29 +361,31 @@ textarea {
     overflow-wrap: anywhere;
 }
 
+/* Empty / loading / error */
 .empty-urgent,
-.loading-box,
-.error-box {
+.loading-box {
     border: 1px dashed var(--border);
     border-radius: 10px;
     color: var(--muted);
     padding: 12px;
-    background: #12161e;
+    background: var(--panel-2);
 }
 
 .error-box {
-    color: #ffb3b3;
-    border-color: #613838;
-    background: #1a1212;
+    border: 1px solid var(--danger-2);
+    border-radius: 10px;
+    color: var(--danger);
+    padding: 12px;
+    background: var(--surface-0);
 }
 
-/* dialog */
+/* Dialog */
 .task-dialog {
     width: min(560px, calc(100vw - 24px));
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 0;
-    background: #141922;
+    background: var(--dialog-bg);
     color: var(--text);
 }
 
@@ -366,14 +416,14 @@ textarea {
 
 .field > span {
     font-size: 0.84rem;
-    color: #c7cfdf;
+    color: var(--muted-strong);
 }
 
 .field input,
 .field textarea {
     width: 100%;
-    background: #0f131a;
-    border: 1px solid var(--border);
+    background: var(--input-bg);
+    border: 1px solid var(--surface-0);
     border-radius: 8px;
     padding: 8px 10px;
     outline: none;
@@ -381,8 +431,8 @@ textarea {
 
 .field input:focus,
 .field textarea:focus {
-    border-color: #4a69a9;
-    box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.15);
+    border-color: var(--accent);
+    box-shadow: var(--focus-shadow);
 }
 
 .field textarea {
@@ -394,7 +444,7 @@ textarea {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    color: #cfd6e6;
+    color: var(--muted-strong);
 }
 
 .dialog-actions {

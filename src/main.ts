@@ -6,7 +6,7 @@ type TaskRow = {
     title: string;
     notes: string | null;
     due_date: string | null; // YYYY-MM-DD
-    is_urgent: number; // 0/1
+    is_urgent: number;       // 0/1
     created_at: string;
     updated_at: string;
 };
