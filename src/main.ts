@@ -29,35 +29,35 @@ let modalState: ModalState | null = null;
 type DragKind = "day" | "urgent";
 
 type PendingDrag = {
-    taskId: number;
-    kind: DragKind;
-    startX: number;
-    startY: number;
+    taskId:   number;
+    kind:     DragKind;
+    startX:   number;
+    startY:   number;
     sourceEl: HTMLElement;
 };
 
 type ActiveDrag = {
-    taskId: number;
-    kind: DragKind;
+    taskId:   number;
+    kind:     DragKind;
     sourceEl: HTMLElement;
-    ghostEl: HTMLDivElement;
+    ghostEl:  HTMLDivElement;
 
-    startRect: DOMRect;
-    startKind: DragKind;
+    startRect:      DOMRect;
+    startKind:      DragKind;
     startContainer: HTMLElement | null;
-    startIndex: number;
+    startIndex:     number;
 };
 
 let pendingDrag: PendingDrag | null = null;
-let activeDrag: ActiveDrag | null = null;
+let activeDrag:  ActiveDrag  | null = null;
 let dragLastY = 0;
 let dragMovingDown = true;
 
 let hoveredDayBox: HTMLElement | null = null;
 let justDragged = false;
 
-let previewEl: HTMLElement | null = null;
-let previewKind: DragKind | null = null;
+let previewEl:        HTMLElement | null = null;
+let previewKind:      DragKind    | null = null;
 let previewContainer: HTMLElement | null = null;
 let previewIndex = -1;
 
@@ -92,7 +92,10 @@ function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
 
 function restoreBorrowedEmpty(): void {
     if (!borrowedEmpty) return;
-    if (borrowedEmpty.parent.isConnected) borrowedEmpty.parent.appendChild(borrowedEmpty.row);
+
+    if (borrowedEmpty.parent.isConnected)
+        borrowedEmpty.parent.appendChild(borrowedEmpty.row);
+
     borrowedEmpty = null;
 }
 
@@ -109,10 +112,10 @@ function borrowEmptyRow(container: HTMLElement): void {
 
 function clearPreview(): void {
     previewEl?.remove();
-    previewEl = null;
-    previewKind = null;
+    previewEl        = null;
+    previewKind      = null;
     previewContainer = null;
-    previewIndex = -1;
+    previewIndex     = -1;
 
     restoreBorrowedEmpty();
     setUrgentPreviewing(false);
@@ -147,7 +150,9 @@ function buildPreview(kind: DragKind, taskId: number): HTMLElement {
     const notes = task?.notes?.trim()
         ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
         : "";
-    const urgentMark = task?.is_urgent ? `<span class="urgent-pill">urgent</span>` : "";
+    const urgentMark = task?.is_urgent
+        ? `<span class="urgent-pill">urgent</span>`
+        : "";
 
     el.innerHTML = `
         <div class="row-main">
@@ -182,9 +187,8 @@ function computeInsertIndex(
     kind: DragKind,
     movingDown: boolean
 ): number {
-    if (
-        activeDrag &&
-        activeDrag.startKind === kind &&
+    if (activeDrag &&
+        activeDrag.startKind      === kind      &&
         activeDrag.startContainer === container &&
         y >= activeDrag.startRect.top &&
         y <= activeDrag.startRect.bottom
@@ -195,7 +199,7 @@ function computeInsertIndex(
     if (movingDown) {
         for (let i = 0; i < items.length; i++) {
             const r = items[i].getBoundingClientRect();
-            if (y < r.top) return i;
+            if (y < r.top)    return i;
             if (y < r.bottom) return i + 1;
         }
         return items.length;
@@ -215,7 +219,8 @@ function showDayPreview(dayBox: HTMLElement, pointerY: number, movingDown: boole
 
     ensurePreview("day", container);
 
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
+    const items = Array
+        .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
         .filter((el) => !el.classList.contains("drag-preview"))
         .filter((el) => !el.classList.contains("drag-source"));
 
@@ -223,7 +228,9 @@ function showDayPreview(dayBox: HTMLElement, pointerY: number, movingDown: boole
     if (idx === previewIndex) return;
     previewIndex = idx;
 
-    const ref = items[idx] ?? container.querySelector<HTMLElement>(".task-row.empty") ?? null;
+    const ref = items[idx]
+        ?? container.querySelector<HTMLElement>(".task-row.empty")
+        ?? null;
     if (previewEl) container.insertBefore(previewEl, ref);
 }
 
@@ -234,7 +241,8 @@ function showUrgentPreview(pointerY: number, movingDown: boolean): void {
 
     ensurePreview("urgent", container);
 
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".urgent-item"))
+    const items = Array
+        .from(container.querySelectorAll<HTMLElement>(".urgent-item"))
         .filter((el) => !el.classList.contains("drag-preview"))
         .filter((el) => !el.classList.contains("drag-source"));
 
@@ -296,11 +304,11 @@ async function moveTaskToDay(taskId: number, dateKey: string): Promise<void> {
 function beginDragFromPending(x: number, y: number): void {
     if (!pendingDrag) return;
 
-    const task = visibleTaskById.get(pendingDrag.taskId);
+    const task  = visibleTaskById.get(pendingDrag.taskId);
     const title = task?.title ?? `#${pendingDrag.taskId}`;
 
     const ghost = document.createElement("div");
-    ghost.className = "drag-ghost";
+    ghost.className   = "drag-ghost";
     ghost.textContent = title;
     document.body.appendChild(ghost);
     updateGhostPosition(ghost, x, y);
@@ -364,7 +372,7 @@ function cleanupDragVisuals(): void {
         activeDrag.ghostEl.remove();
     }
     pendingDrag = null;
-    activeDrag = null;
+    activeDrag  = null;
 
     setDayHover(null);
     setUrgentHover(false);
@@ -418,9 +426,9 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     }
 
     pendingDrag = null;
-    activeDrag = null;
+    activeDrag  = null;
 
-    setDayHover(null);
+    setDayHover   (null);
     setUrgentHover(false);
 
     drag.ghostEl.remove();
@@ -450,8 +458,8 @@ function escapeHtml(input: string): string {
 }
 
 function dateToKey(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const y   = d.getFullYear();
+    const m   = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
 }
@@ -468,8 +476,8 @@ function addDays(d: Date, n: number): Date {
 }
 
 function startOfWeek(d: Date): Date {
-    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const dow = x.getDay();
+    const x    = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dow  = x.getDay();
     const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday cuz I'm slav
     x.setDate(x.getDate() + diff);
     return x;
@@ -483,8 +491,8 @@ function formatWeekRange(weekStart: Date): string {
     const end = addDays(weekStart, 6);
     const fmt = new Intl.DateTimeFormat(undefined, {
         month: "short",
-        day: "numeric",
-        year: "numeric",
+        day:   "numeric",
+        year:  "numeric",
     });
     return `${fmt.format(weekStart)} — ${fmt.format(end)}`;
 }
@@ -492,16 +500,16 @@ function formatWeekRange(weekStart: Date): string {
 function formatLongDate(key: string): string {
     return new Intl.DateTimeFormat(undefined, {
         weekday: "long",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
+        year:    "numeric",
+        month:   "short",
+        day:     "numeric",
     }).format(keyToDate(key));
 }
 
 function formatMonthDay(key: string): string {
     return new Intl.DateTimeFormat(undefined, {
         month: "short",
-        day: "numeric",
+        day:   "numeric",
     }).format(keyToDate(key));
 }
 
@@ -557,8 +565,8 @@ function renderWeekGrid(): void {
 
     const renderDayBox = (weekIndex: number): string => {
         const dateKey = weekKeys[weekIndex];
-        const tasks = grouped.get(dateKey) ?? [];
-        const slots = Math.max(6, tasks.length);
+        const tasks   = grouped.get(dateKey) ?? [];
+        const slots   = Math.max(6, tasks.length);
 
         const rows = Array.from({ length: slots }, (_, i) => {
             const task = tasks[i];
@@ -717,8 +725,8 @@ function closeModal(): void {
 async function saveModal(): Promise<void> {
     if (!modalState) return;
 
-    const titleInput = qs<HTMLInputElement>("#task-title-input");
-    const notesInput = qs<HTMLTextAreaElement>("#task-notes-input");
+    const titleInput  = qs<HTMLInputElement>("#task-title-input");
+    const notesInput  = qs<HTMLTextAreaElement>("#task-notes-input");
     const urgentInput = qs<HTMLInputElement>("#task-urgent-input");
 
     const title = titleInput.value.trim();
@@ -786,19 +794,20 @@ async function deleteModalTask(): Promise<void> {
 }
 
 async function refresh(): Promise<void> {
-    try {
-        await loadTasksForCurrentView();
+    loadTasksForCurrentView()
+    .then(() => {
         setDayHover(null);
         setUrgentHover(false);
         clearPreview();
         renderAll();
-    } catch (err) {
+    })
+    .catch(err => {
         console.error(err);
         const grid = document.querySelector<HTMLDivElement>("#week-grid");
         const list = document.querySelector<HTMLDivElement>("#urgent-list");
-        if (grid) grid.innerHTML = `<div class="error-box">Failed to load data. Check console.</div>`;
-        if (list) list.innerHTML = `<div class="error-box">Failed to load data. Check console.</div>`;
-    }
+        if (grid) grid.innerHTML = `<div class="error-box">Failed to load data.</div>`;
+        if (list) list.innerHTML = `<div class="error-box">Failed to load data.</div>`;
+    });
 }
 
 function wireEvents(): void {
@@ -994,9 +1003,9 @@ function wireEvents(): void {
 async function bootstrap(): Promise<void> {
     wireEvents();
 
-    const weekGrid = document.querySelector<HTMLDivElement>("#week-grid");
+    const weekGrid   = document.querySelector<HTMLDivElement>("#week-grid");
     const urgentList = document.querySelector<HTMLDivElement>("#urgent-list");
-    if (weekGrid) weekGrid.innerHTML = `<div class="loading-box">Loading…</div>`;
+    if (weekGrid)   weekGrid  .innerHTML = `<div class="loading-box">Loading…</div>`;
     if (urgentList) urgentList.innerHTML = `<div class="loading-box">Loading…</div>`;
 
     await refresh();
