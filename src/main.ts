@@ -1,28 +1,21 @@
 import "./styles.css";
-import { getDb } from "./db";
-
-type TaskRow = {
-    id:         number;
-    title:      string;
-    notes:      string | null;
-    due_date:   string | null; // YYYY-MM-DD
-    is_urgent:  number;        // 0/1
-    created_at: string;
-    updated_at: string;
-};
+import { DBManager } from "./db";
+import { Task, DateKey } from "./task";
 
 type ModalState = { mode: "create"; target: "day";    dateKey: string }
                 | { mode: "create"; target: "urgent"                  }
-                | { mode: "edit";   target: "day";    task: TaskRow   }
-                | { mode: "edit";   target: "urgent"; task: TaskRow   };
+                | { mode: "edit";   target: "day";    task: Task      }
+                | { mode: "edit";   target: "urgent"; task: Task      };
 
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+let dbm = new DBManager();
+
 let currentWeekStart = startOfWeek(new Date());
-let weekTasks: TaskRow[] = [];
-let urgentNoDeadlineTasks: TaskRow[] = [];
-let visibleTaskById = new Map<number, TaskRow>();
+let weekTasks: Task[] = [];
+let urgentNoDeadlineTasks: Task[] = [];
+let visibleTaskById = new Map<number, Task>();
 
 let modalState: ModalState | null = null;
 
@@ -150,7 +143,7 @@ function buildPreview(kind: DragKind, taskId: number): HTMLElement {
     const notes = task?.notes?.trim()
         ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
         : "";
-    const urgentMark = task?.is_urgent
+    const urgentMark = task?.urgent
         ? `<span class="urgent-pill">urgent</span>`
         : "";
 
@@ -271,36 +264,6 @@ function orderFromDom(container: HTMLElement, selector: string, draggedId: numbe
     return ids;
 }
 
-async function setSortOrder(ids: number[]): Promise<void> {
-    const db = await getDb();
-    await db.execute("BEGIN");
-    try {
-        for (let i = 0; i < ids.length; i++) {
-            await db.execute(`UPDATE tasks SET sort_order = ? WHERE id = ?`, [i + 1, ids[i]]);
-        }
-        await db.execute("COMMIT");
-    } catch (e) {
-        await db.execute("ROLLBACK");
-        throw e;
-    }
-}
-
-async function moveTaskToUrgent(taskId: number): Promise<void> {
-    const db = await getDb();
-    await db.execute(
-        `UPDATE tasks SET due_date = NULL, is_urgent = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [taskId]
-    );
-}
-
-async function moveTaskToDay(taskId: number, dateKey: string): Promise<void> {
-    const db = await getDb();
-    await db.execute(
-        `UPDATE tasks SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [dateKey, taskId]
-    );
-}
-
 function beginDragFromPending(x: number, y: number): void {
     if (!pendingDrag) return;
 
@@ -402,8 +365,8 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(list, ".urgent-item", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await moveTaskToUrgent(draggedId);
-                    await setSortOrder(ids);
+                    await dbm.moveTaskToUrgent(draggedId);
+                    await dbm.setSortOrder(ids);
                 };
             }
         }
@@ -413,8 +376,8 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(container, ".task-row.filled", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await moveTaskToDay(draggedId, dropDateKey);
-                    await setSortOrder(ids);
+                    await dbm.moveTaskToDay(draggedId, dropDateKey);
+                    await dbm.setSortOrder(ids);
                 };
             }
         }
@@ -457,7 +420,7 @@ function escapeHtml(input: string): string {
                 .replace(/'/g, "&#039;");
 }
 
-function dateToKey(d: Date): string {
+function dateToKey(d: Date): DateKey {
     const y   = d.getFullYear();
     const m   = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
@@ -483,7 +446,7 @@ function startOfWeek(d: Date): Date {
     return x;
 }
 
-function getWeekDateKeys(weekStart: Date): string[] {
+function getWeekDateKeys(weekStart: Date): DateKey[] {
     return Array.from({ length: 7 }, (_, i) => dateToKey(addDays(weekStart, i)));
 }
 
@@ -513,8 +476,8 @@ function formatMonthDay(key: string): string {
     }).format(keyToDate(key));
 }
 
-function byDueDateMap(tasks: TaskRow[]): Map<string, TaskRow[]> {
-    const m = new Map<string, TaskRow[]>();
+function byDueDateMap(tasks: Task[]): Map<string, Task[]> {
+    const m = new Map<string, Task[]>();
     for (const t of tasks) {
         if (!t.due_date) continue;
         const arr = m.get(t.due_date) ?? [];
@@ -525,29 +488,14 @@ function byDueDateMap(tasks: TaskRow[]): Map<string, TaskRow[]> {
 }
 
 async function loadTasksForCurrentView(): Promise<void> {
-    const db = await getDb();
     const weekKeys = getWeekDateKeys(currentWeekStart);
     const weekStartKey = weekKeys[0];
     const weekEndKey = weekKeys[6];
 
-    weekTasks = await db.select<TaskRow[]>(
-        `
-        SELECT id, title, notes, due_date, is_urgent, created_at, updated_at
-        FROM tasks
-        WHERE due_date >= ? AND due_date <= ?
-        ORDER BY due_date ASC, sort_order ASC, id ASC
-        `,
-        [weekStartKey, weekEndKey]
-    );
+    weekTasks = await dbm.getWeekTasks(weekStartKey, weekEndKey);
+    urgentNoDeadlineTasks = await dbm.getUrgentTasks();
 
-    urgentNoDeadlineTasks = await db.select<TaskRow[]>(`
-        SELECT id, title, notes, due_date, is_urgent, created_at, updated_at
-        FROM tasks
-        WHERE due_date IS NULL AND is_urgent = 1
-        ORDER BY sort_order ASC, id ASC
-    `);
-
-    visibleTaskById = new Map<number, TaskRow>();
+    visibleTaskById = new Map<number, Task>();
     for (const t of weekTasks) visibleTaskById.set(t.id, t);
     for (const t of urgentNoDeadlineTasks) visibleTaskById.set(t.id, t);
 }
@@ -573,7 +521,7 @@ function renderWeekGrid(): void {
             if (!task) {
                 return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
             }
-            const urgentMark = task.is_urgent ? `<span class="urgent-pill">urgent</span>` : "";
+            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
             const title = escapeHtml(task.title);
             const notesPreview = task.notes?.trim()
                 ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
@@ -697,7 +645,7 @@ function openModal(state: ModalState): void {
         titleInput.value = state.task.title ?? "";
         notesInput.value = state.task.notes ?? "";
         urgentField.hidden = false;
-        urgentInput.checked = state.task.is_urgent === 1;
+        urgentInput.checked = state.task.urgent;
         deleteBtn.hidden = false;
         saveBtn.textContent = "Save";
     } else {
@@ -737,7 +685,7 @@ async function saveModal(): Promise<void> {
         return;
     }
 
-    const db = await getDb();
+    const db = await dbm.get();
 
     if (modalState.mode === "create" && modalState.target === "day") {
         await db.execute(
@@ -787,8 +735,7 @@ async function saveModal(): Promise<void> {
 
 async function deleteModalTask(): Promise<void> {
     if (!modalState || modalState.mode !== "edit") return;
-    const db = await getDb();
-    await db.execute(`DELETE FROM tasks WHERE id = ?`, [modalState.task.id]);
+    await dbm.deleteTask(modalState.task.id);
     closeModal();
     await refresh();
 }
