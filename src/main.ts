@@ -29,6 +29,421 @@ let visibleTaskById = new Map<number, TaskRow>();
 
 let modalState: ModalState | null = null;
 
+type DragKind = "day" | "urgent";
+
+type PendingDrag = {
+    taskId: number;
+    kind: DragKind;
+    startX: number;
+    startY: number;
+    sourceEl: HTMLElement;
+};
+
+type ActiveDrag = {
+    taskId: number;
+    kind: DragKind;
+    sourceEl: HTMLElement;
+    ghostEl: HTMLDivElement;
+
+    startRect: DOMRect;
+    startKind: DragKind;
+    startContainer: HTMLElement | null;
+    startIndex: number;
+};
+
+let pendingDrag: PendingDrag | null = null;
+let activeDrag: ActiveDrag | null = null;
+let dragLastY = 0;
+let dragMovingDown = true;
+
+let hoveredDayBox: HTMLElement | null = null;
+let justDragged = false;
+
+let previewEl: HTMLElement | null = null;
+let previewKind: DragKind | null = null;
+let previewContainer: HTMLElement | null = null;
+let previewIndex = -1;
+
+let borrowedEmpty: { row: HTMLElement; parent: HTMLElement } | null = null;
+
+function closestAtPoint<T extends Element>(selector: string, x: number, y: number): T | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    return (el?.closest(selector) as T | null) ?? null;
+}
+
+function setDayHover(dayBox: HTMLElement | null): void {
+    if (hoveredDayBox && hoveredDayBox !== dayBox) hoveredDayBox.classList.remove("drop-hover");
+    hoveredDayBox = dayBox;
+    if (hoveredDayBox) hoveredDayBox.classList.add("drop-hover");
+}
+
+function setUrgentHover(on: boolean): void {
+    const list = document.querySelector<HTMLElement>("#urgent-list");
+    if (!list) return;
+    list.classList.toggle("drop-hover-urgent", on);
+}
+
+function setUrgentPreviewing(on: boolean): void {
+    const list = document.querySelector<HTMLElement>("#urgent-list");
+    if (!list) return;
+    list.classList.toggle("previewing", on);
+}
+
+function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
+    ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
+}
+
+function restoreBorrowedEmpty(): void {
+    if (!borrowedEmpty) return;
+    if (borrowedEmpty.parent.isConnected) borrowedEmpty.parent.appendChild(borrowedEmpty.row);
+    borrowedEmpty = null;
+}
+
+function borrowEmptyRow(container: HTMLElement): void {
+    if (borrowedEmpty?.parent === container) return;
+    restoreBorrowedEmpty();
+
+    const empty = container.querySelector<HTMLElement>(".task-row.empty");
+    if (!empty) return;
+
+    borrowedEmpty = { row: empty, parent: container };
+    empty.remove();
+}
+
+function clearPreview(): void {
+    previewEl?.remove();
+    previewEl = null;
+    previewKind = null;
+    previewContainer = null;
+    previewIndex = -1;
+
+    restoreBorrowedEmpty();
+    setUrgentPreviewing(false);
+}
+
+function buildPreview(kind: DragKind, taskId: number): HTMLElement {
+    const task = visibleTaskById.get(taskId);
+
+    if (kind === "urgent") {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "urgent-item drag-preview";
+        el.dataset.taskId = String(taskId);
+
+        const title = escapeHtml(task?.title ?? `#${taskId}`);
+        const notes = task?.notes?.trim()
+            ? `<div class="urgent-notes">${escapeHtml(task.notes.trim())}</div>`
+            : "";
+
+        el.innerHTML = `
+            <div class="urgent-item-title">${title}</div>
+            ${notes}
+        `;
+        return el;
+    }
+
+    const el = document.createElement("div");
+    el.className = "task-row filled drag-preview";
+    el.dataset.taskId = String(taskId);
+
+    const title = escapeHtml(task?.title ?? `#${taskId}`);
+    const notes = task?.notes?.trim()
+        ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
+        : "";
+    const urgentMark = task?.is_urgent ? `<span class="urgent-pill">urgent</span>` : "";
+
+    el.innerHTML = `
+        <div class="row-main">
+            <span class="row-title">${title}</span>
+            ${notes}
+        </div>
+        ${urgentMark}
+    `;
+    return el;
+}
+
+function ensurePreview(kind: DragKind, container: HTMLElement): void {
+    if (!activeDrag) return;
+    if (previewEl && previewKind === kind && previewContainer === container) return;
+
+    clearPreview();
+    previewKind = kind;
+    previewContainer = container;
+    previewEl = buildPreview(kind, activeDrag.taskId);
+    previewIndex = -1;
+
+    if (kind === "day") borrowEmptyRow(container);
+    else setUrgentPreviewing(true);
+
+    container.appendChild(previewEl);
+}
+
+function computeInsertIndex(
+    items: HTMLElement[],
+    y: number,
+    container: HTMLElement,
+    kind: DragKind,
+    movingDown: boolean
+): number {
+    if (
+        activeDrag &&
+        activeDrag.startKind === kind &&
+        activeDrag.startContainer === container &&
+        y >= activeDrag.startRect.top &&
+        y <= activeDrag.startRect.bottom
+    ) {
+        return Math.max(0, Math.min(activeDrag.startIndex, items.length));
+    }
+
+    if (movingDown) {
+        for (let i = 0; i < items.length; i++) {
+            const r = items[i].getBoundingClientRect();
+            if (y < r.top) return i;
+            if (y < r.bottom) return i + 1;
+        }
+        return items.length;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+        const r = items[i].getBoundingClientRect();
+        if (y <= r.bottom) return i;
+    }
+    return items.length;
+}
+
+function showDayPreview(dayBox: HTMLElement, pointerY: number, movingDown: boolean): void {
+    if (!activeDrag) return;
+    const container = dayBox.querySelector<HTMLElement>(".day-rows");
+    if (!container) return;
+
+    ensurePreview("day", container);
+
+    const items = Array.from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
+        .filter((el) => !el.classList.contains("drag-preview"))
+        .filter((el) => !el.classList.contains("drag-source"));
+
+    const idx = computeInsertIndex(items, pointerY, container, "day", movingDown);
+    if (idx === previewIndex) return;
+    previewIndex = idx;
+
+    const ref = items[idx] ?? container.querySelector<HTMLElement>(".task-row.empty") ?? null;
+    if (previewEl) container.insertBefore(previewEl, ref);
+}
+
+function showUrgentPreview(pointerY: number, movingDown: boolean): void {
+    if (!activeDrag) return;
+    const container = document.querySelector<HTMLElement>("#urgent-list");
+    if (!container) return;
+
+    ensurePreview("urgent", container);
+
+    const items = Array.from(container.querySelectorAll<HTMLElement>(".urgent-item"))
+        .filter((el) => !el.classList.contains("drag-preview"))
+        .filter((el) => !el.classList.contains("drag-source"));
+
+    const idx = computeInsertIndex(items, pointerY, container, "urgent", movingDown);
+    if (idx === previewIndex) return;
+    previewIndex = idx;
+
+    const ref = items[idx] ?? null;
+    if (previewEl) container.insertBefore(previewEl, ref);
+}
+
+function orderFromDom(container: HTMLElement, selector: string, draggedId: number): number[] {
+    const els = Array.from(container.querySelectorAll<HTMLElement>(selector));
+    const ids: number[] = [];
+    const seen = new Set<number>();
+
+    for (const el of els) {
+        if (el.classList.contains("drag-source")) continue;
+        const id = Number(el.dataset.taskId);
+        if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+    }
+
+    if (!seen.has(draggedId)) ids.push(draggedId);
+    return ids;
+}
+
+async function setSortOrder(ids: number[]): Promise<void> {
+    const db = await getDb();
+    await db.execute("BEGIN");
+    try {
+        for (let i = 0; i < ids.length; i++) {
+            await db.execute(`UPDATE tasks SET sort_order = ? WHERE id = ?`, [i + 1, ids[i]]);
+        }
+        await db.execute("COMMIT");
+    } catch (e) {
+        await db.execute("ROLLBACK");
+        throw e;
+    }
+}
+
+async function moveTaskToUrgent(taskId: number): Promise<void> {
+    const db = await getDb();
+    await db.execute(
+        `UPDATE tasks SET due_date = NULL, is_urgent = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [taskId]
+    );
+}
+
+async function moveTaskToDay(taskId: number, dateKey: string): Promise<void> {
+    const db = await getDb();
+    await db.execute(
+        `UPDATE tasks SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [dateKey, taskId]
+    );
+}
+
+function beginDragFromPending(x: number, y: number): void {
+    if (!pendingDrag) return;
+
+    const task = visibleTaskById.get(pendingDrag.taskId);
+    const title = task?.title ?? `#${pendingDrag.taskId}`;
+
+    const ghost = document.createElement("div");
+    ghost.className = "drag-ghost";
+    ghost.textContent = title;
+    document.body.appendChild(ghost);
+    updateGhostPosition(ghost, x, y);
+
+    const startRect = pendingDrag.sourceEl.getBoundingClientRect();
+
+    let startContainer: HTMLElement | null = null;
+    let startIndex = 0;
+
+    if (pendingDrag.kind === "day") {
+        startContainer = pendingDrag.sourceEl.closest<HTMLElement>(".day-rows");
+        if (startContainer) {
+            const filled = Array.from(startContainer.querySelectorAll<HTMLElement>(".task-row.filled"));
+            startIndex = filled.indexOf(pendingDrag.sourceEl);
+        }
+    } else {
+        startContainer = document.querySelector<HTMLElement>("#urgent-list");
+        if (startContainer) {
+            const items = Array.from(startContainer.querySelectorAll<HTMLElement>(".urgent-item"));
+            startIndex = items.indexOf(pendingDrag.sourceEl);
+        }
+    }
+    if (startIndex < 0) startIndex = 0;
+
+    pendingDrag.sourceEl.classList.add("drag-source");
+    pendingDrag.sourceEl.style.display = "none";
+    document.body.classList.add("dragging");
+
+    activeDrag = {
+        taskId: pendingDrag.taskId,
+        kind: pendingDrag.kind,
+        sourceEl: pendingDrag.sourceEl,
+        ghostEl: ghost,
+        startRect,
+        startKind: pendingDrag.kind,
+        startContainer,
+        startIndex,
+    };
+    dragLastY = y;
+    dragMovingDown = true;
+
+    pendingDrag = null;
+    justDragged = true;
+
+    if (activeDrag.kind === "urgent") {
+        setUrgentHover(true);
+        showUrgentPreview(y, true);
+    } else {
+        const box = activeDrag.sourceEl.closest<HTMLElement>(".day-box");
+        if (box) {
+            setDayHover(box);
+            showDayPreview(box, y, true);
+        }
+    }
+}
+
+function cleanupDragVisuals(): void {
+    if (activeDrag) {
+        activeDrag.sourceEl.classList.remove("drag-source");
+        activeDrag.sourceEl.style.display = "";
+        activeDrag.ghostEl.remove();
+    }
+    pendingDrag = null;
+    activeDrag = null;
+
+    setDayHover(null);
+    setUrgentHover(false);
+    clearPreview();
+    document.body.classList.remove("dragging");
+}
+
+function cancelDrag(): void {
+    cleanupDragVisuals();
+}
+
+async function finishDrag(dropX: number, dropY: number): Promise<void> {
+    if (!activeDrag) return;
+
+    const drag = activeDrag;
+    const draggedId = drag.taskId;
+
+    const urgentHit = !!closestAtPoint<HTMLElement>("#urgent-list", dropX, dropY);
+    const dayBox = urgentHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
+    const dropDateKey = dayBox?.dataset.dayDate ?? null;
+
+    let applyDbChange: (() => Promise<void>) | null = null;
+
+    if (urgentHit) {
+        const list = document.querySelector<HTMLElement>("#urgent-list");
+        if (list) {
+            const ids = orderFromDom(list, ".urgent-item", draggedId);
+            if (ids.length) {
+                applyDbChange = async () => {
+                    await moveTaskToUrgent(draggedId);
+                    await setSortOrder(ids);
+                };
+            }
+        }
+    } else if (dropDateKey) {
+        const container = dayBox?.querySelector<HTMLElement>(".day-rows");
+        if (container) {
+            const ids = orderFromDom(container, ".task-row.filled", draggedId);
+            if (ids.length) {
+                applyDbChange = async () => {
+                    await moveTaskToDay(draggedId, dropDateKey);
+                    await setSortOrder(ids);
+                };
+            }
+        }
+    }
+
+    if (!applyDbChange) {
+        cleanupDragVisuals();
+        return;
+    }
+
+    pendingDrag = null;
+    activeDrag = null;
+
+    setDayHover(null);
+    setUrgentHover(false);
+
+    drag.ghostEl.remove();
+    document.body.classList.remove("dragging");
+
+    try {
+        await applyDbChange();
+        await refresh();
+    } catch (err) {
+        if (drag.sourceEl.isConnected) {
+            drag.sourceEl.classList.remove("drag-source");
+            drag.sourceEl.style.display = "";
+        }
+        clearPreview();
+        throw err;
+    } finally {
+        clearPreview();
+    }
+}
+
 function escapeHtml(input: string): string {
     return input.replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
@@ -57,7 +472,7 @@ function addDays(d: Date, n: number): Date {
 
 function startOfWeek(d: Date): Date {
     const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const dow = x.getDay();                // Sun=0..Sat=6
+    const dow = x.getDay();
     const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday cuz I'm slav
     x.setDate(x.getDate() + diff);
     return x;
@@ -116,6 +531,7 @@ async function initDb(): Promise<SqlDb> {
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
             notes TEXT DEFAULT '',
             due_date TEXT NULL, -- YYYY-MM-DD or NULL
             is_urgent INTEGER NOT NULL DEFAULT 0 CHECK (is_urgent IN (0,1)),
@@ -148,7 +564,7 @@ async function loadTasksForCurrentView(): Promise<void> {
         SELECT id, title, notes, due_date, is_urgent, created_at, updated_at
         FROM tasks
         WHERE due_date >= ? AND due_date <= ?
-        ORDER BY due_date ASC, id ASC
+        ORDER BY due_date ASC, sort_order ASC, id ASC
         `,
         [weekStartKey, weekEndKey]
     );
@@ -157,7 +573,7 @@ async function loadTasksForCurrentView(): Promise<void> {
         SELECT id, title, notes, due_date, is_urgent, created_at, updated_at
         FROM tasks
         WHERE due_date IS NULL AND is_urgent = 1
-        ORDER BY id ASC
+        ORDER BY sort_order ASC, id ASC
     `);
 
     visibleTaskById = new Map<number, TaskRow>();
@@ -204,7 +620,7 @@ function renderWeekGrid(): void {
         }).join("");
 
         const isToday = dateKey === todayKey;
-        const isPast  = dateKey < todayKey; // safe because YYYY-MM-DD
+        const isPast  = dateKey < todayKey;
 
         return `
             <div class="day-box ${isToday ? "today" : ""} ${isPast ? "past" : ""}" data-day-date="${dateKey}" title="Click to add task">
@@ -299,7 +715,7 @@ function openModal(state: ModalState): void {
         titleInput.value = "";
         notesInput.value = "";
         urgentField.hidden = true;
-        urgentInput.checked = true; // forced
+        urgentInput.checked = true;
         deleteBtn.hidden = true;
         saveBtn.textContent = "Create";
     } else if (state.mode === "edit" && state.target === "day") {
@@ -319,7 +735,7 @@ function openModal(state: ModalState): void {
         titleInput.value = state.task.title ?? "";
         notesInput.value = state.task.notes ?? "";
         urgentField.hidden = true;
-        urgentInput.checked = true; // forced
+        urgentInput.checked = true;
         deleteBtn.hidden = false;
         saveBtn.textContent = "Save";
     }
@@ -354,12 +770,24 @@ async function saveModal(): Promise<void> {
 
     if (modalState.mode === "create" && modalState.target === "day") {
         await db.execute(
-            `INSERT INTO tasks (title, notes, due_date, is_urgent) VALUES (?, ?, ?, ?)`,
-            [title, notes, modalState.dateKey, urgentInput.checked ? 1 : 0]
+            `
+            INSERT INTO tasks (title, notes, due_date, is_urgent, sort_order)
+            VALUES (
+                ?, ?, ?, ?,
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date = ?)
+            )
+            `,
+            [title, notes, modalState.dateKey, urgentInput.checked ? 1 : 0, modalState.dateKey]
         );
     } else if (modalState.mode === "create" && modalState.target === "urgent") {
         await db.execute(
-            `INSERT INTO tasks (title, notes, due_date, is_urgent) VALUES (?, ?, NULL, 1)`,
+            `
+            INSERT INTO tasks (title, notes, due_date, is_urgent, sort_order)
+            VALUES (
+                ?, ?, NULL, 1,
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date IS NULL AND is_urgent = 1)
+            )
+            `,
             [title, notes]
         );
     } else if (modalState.mode === "edit" && modalState.target === "day") {
@@ -397,6 +825,9 @@ async function deleteModalTask(): Promise<void> {
 async function refresh(): Promise<void> {
     try {
         await loadTasksForCurrentView();
+        setDayHover(null);
+        setUrgentHover(false);
+        clearPreview();
         renderAll();
     } catch (err) {
         console.error(err);
@@ -408,6 +839,8 @@ async function refresh(): Promise<void> {
 }
 
 function wireEvents(): void {
+    justDragged = false;
+
     qs<HTMLButtonElement>("#prev-week-btn").addEventListener("click", async () => {
         currentWeekStart = addDays(currentWeekStart, -7);
         await refresh();
@@ -419,6 +852,11 @@ function wireEvents(): void {
     });
 
     qs<HTMLDivElement>("#week-grid").addEventListener("click", (e) => {
+        if (justDragged) {
+            justDragged = false;
+            return;
+        }
+
         const target = e.target as HTMLElement;
 
         const filledRow = target.closest<HTMLElement>(".task-row.filled");
@@ -441,6 +879,11 @@ function wireEvents(): void {
     });
 
     qs<HTMLDivElement>("#urgent-list").addEventListener("click", (e) => {
+        if (justDragged) {
+            justDragged = false;
+            return;
+        }
+
         const target = e.target as HTMLElement;
         const item = target.closest<HTMLElement>(".urgent-item");
         if (!item) return;
@@ -468,6 +911,94 @@ function wireEvents(): void {
             alert("Save failed. Check console.");
         }
     });
+
+    qs<HTMLDivElement>("#week-grid").addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        const target = e.target as HTMLElement;
+        const row = target.closest<HTMLElement>(".task-row.filled");
+        if (!row) return;
+
+        const id = Number(row.dataset.taskId);
+        if (!Number.isFinite(id) || id <= 0) return;
+
+        pendingDrag = {
+            taskId: id,
+            kind: "day",
+            startX: e.clientX,
+            startY: e.clientY,
+            sourceEl: row,
+        };
+    }, { capture: true });
+
+    qs<HTMLDivElement>("#urgent-list").addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        const target = e.target as HTMLElement;
+        const item = target.closest<HTMLElement>(".urgent-item");
+        if (!item) return;
+
+        const id = Number(item.dataset.taskId);
+        if (!Number.isFinite(id) || id <= 0) return;
+
+        pendingDrag = {
+            taskId: id,
+            kind: "urgent",
+            startX: e.clientX,
+            startY: e.clientY,
+            sourceEl: item,
+        };
+    }, { capture: true });
+
+    window.addEventListener("pointermove", (e) => {
+        if (!pendingDrag && !activeDrag) return;
+
+        if (pendingDrag && !activeDrag) {
+            const dx = e.clientX - pendingDrag.startX;
+            const dy = e.clientY - pendingDrag.startY;
+            if ((dx * dx + dy * dy) < 36) return;
+            beginDragFromPending(e.clientX, e.clientY);
+            return;
+        }
+
+        if (!activeDrag) return;
+
+        e.preventDefault();
+
+        updateGhostPosition(activeDrag.ghostEl, e.clientX, e.clientY);
+        if (e.clientY !== dragLastY) dragMovingDown = e.clientY > dragLastY;
+        dragLastY = e.clientY;
+
+        const urgentHit = !!closestAtPoint<HTMLElement>("#urgent-list", e.clientX, e.clientY);
+        setUrgentHover(urgentHit);
+
+        if (urgentHit) {
+            setDayHover(null);
+            showUrgentPreview(e.clientY, dragMovingDown);
+            return;
+        }
+
+        const dayBox = closestAtPoint<HTMLElement>(".day-box", e.clientX, e.clientY);
+        setDayHover(dayBox);
+
+        if (dayBox) showDayPreview(dayBox, e.clientY, dragMovingDown);
+        else clearPreview();
+    }, { passive: false });
+
+    window.addEventListener("pointerup", async (e) => {
+        if (!pendingDrag && !activeDrag) return;
+
+        if (activeDrag) {
+            try {
+                await finishDrag(e.clientX, e.clientY);
+            } catch (err) {
+                console.error(err);
+                cancelDrag();
+            }
+        } else {
+            pendingDrag = null;
+        }
+    });
+
+    window.addEventListener("pointercancel", () => cancelDrag());
 
     const dialog = qs<HTMLDialogElement>("#task-dialog");
     dialog.addEventListener("cancel", (e) => {
