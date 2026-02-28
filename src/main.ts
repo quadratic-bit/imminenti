@@ -407,8 +407,6 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
         }
         clearPreview();
         throw err;
-    } finally {
-        clearPreview();
     }
 }
 
@@ -741,7 +739,7 @@ async function deleteModalTask(): Promise<void> {
 }
 
 async function refresh(): Promise<void> {
-    loadTasksForCurrentView()
+    await loadTasksForCurrentView()
     .then(() => {
         setDayHover(null);
         setUrgentHover(false);
