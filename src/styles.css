@@ -332,6 +332,18 @@ textarea {
     border-color: var(--surface-2);
 }
 
+body.dragging .task-row.filled:hover,
+body.dragging .task-row.filled:active {
+    background: var(--row-bg);
+    border-color: var(--surface-1);
+}
+
+body.dragging .ongoing-item:hover,
+body.dragging .ongoing-item:active {
+    background: var(--row-bg);
+    border-color: var(--danger-2);
+}
+
 .row-main {
     min-width: 0;
     display: flex;
