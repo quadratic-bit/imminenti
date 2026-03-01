@@ -233,6 +233,12 @@ function idsInGrid(container: HTMLElement): number[] {
         .filter((n) => Number.isFinite(n) && n > 0);
 }
 
+function indexOfFilledRow(container: HTMLElement, rowEl: HTMLElement): number {
+    const filled = Array.from(container.querySelectorAll<HTMLElement>(".task-row.filled"));
+    const idx = filled.indexOf(rowEl);
+    return idx < 0 ? 0 : idx;
+}
+
 function clearPreview(): void {
     previewEl?.remove();
     previewEl        = null;
@@ -443,26 +449,17 @@ function beginDragFromPending(x: number, y: number): void {
     let startContainer: HTMLElement | null = null;
     let startIndex = 0;
 
-    if (pendingDrag.kind === "today") {
+    if (pendingDrag.kind !== "ongoing") {
         startContainer = pendingDrag.sourceEl.closest<HTMLElement>(".day-rows");
-        if (startContainer) {
-            const filled = Array.from(startContainer.querySelectorAll<HTMLElement>(".task-row.filled"));
-            startIndex = filled.indexOf(pendingDrag.sourceEl);
-        }
-    } else if (pendingDrag.kind === "day") {
-        startContainer = pendingDrag.sourceEl.closest<HTMLElement>(".day-rows");
-        if (startContainer) {
-            const filled = Array.from(startContainer.querySelectorAll<HTMLElement>(".task-row.filled"));
-            startIndex = filled.indexOf(pendingDrag.sourceEl);
-        }
+        if (startContainer) startIndex = indexOfFilledRow(startContainer, pendingDrag.sourceEl);
     } else {
         startContainer = document.querySelector<HTMLElement>("#ongoing-list");
         if (startContainer) {
             const items = Array.from(startContainer.querySelectorAll<HTMLElement>(".ongoing-item"));
-            startIndex = items.indexOf(pendingDrag.sourceEl);
+            const idx = items.indexOf(pendingDrag.sourceEl);
+            startIndex = idx < 0 ? 0 : idx;
         }
     }
-    if (startIndex < 0) startIndex = 0;
 
     pendingDrag.sourceEl.classList.add("drag-source");
 
