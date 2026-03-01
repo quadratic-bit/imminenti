@@ -10,38 +10,46 @@ const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 let dbm = new DBManager();
 
 let currentWeekStart = startOfWeek(new Date());
-let weekTasks: Task[] = [];
+
+let weekTasks:    Task[] = [];
 let ongoingTasks: Task[] = [];
+let todayTasks:   Task[] = [];
+
 let visibleTaskById = new Map<number, Task>();
-let todayTasks: Task[] = [];
 let suppressNextClick = false;
 
 let modalState: ModalState | null = null;
 
 type DragKind = "day" | "ongoing" | "today";
 
-type DragState = { state: "idle" }
-               | { state: "pending";
-                   taskId: number;
-                   kind: DragKind;
-                   pointerId: number;
-                   startX: number;
-                   startY: number;
-                   sourceEl: HTMLElement; }
-               | { state: "active";
-                   taskId: number;
-                   kind: DragKind;
-                   pointerId: number;
-                   sourceEl: HTMLElement;
-                   ghostEl: HTMLDivElement;
+type DragIdle = { state: "idle" };
+type DragPending = {
+    state: "pending";
+    taskId: number;
+    kind: DragKind;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    sourceEl: HTMLElement;
+}
+type DragActive = {
+    state: "active";
+    taskId: number;
+    kind: DragKind;
+    pointerId: number;
+    sourceEl: HTMLElement;
+    ghostEl: HTMLDivElement;
 
-                   startRect: DOMRect;
-                   startKind: DragKind;
-                   startContainer: HTMLElement | null;
-                   startIndex: number;
+    startRect: DOMRect;
+    startKind: DragKind;
+    startContainer: HTMLElement | null;
+    startIndex: number;
 
-                   lastY: number;
-                   movingDown: boolean; };
+    lastY: number;
+    movingDown: boolean;
+}
+
+type DragState = DragIdle | DragPending | DragActive;
 
 let drag: DragState = { state: "idle" };
 
@@ -63,8 +71,8 @@ function repaintBaseOrders(keepSourceHole: boolean): void {
     for (const [container, base] of baseIdsByContainer) {
         let ids = base;
 
-        if (keepSourceHole &&
-            drag.state === "active" &&
+        if (keepSourceHole               &&
+            drag.state === "active"      &&
             drag.startKind !== "ongoing" &&
             drag.startContainer === container
         ) {
@@ -83,9 +91,12 @@ function closestAtPoint<T extends Element>(selector: string, x: number, y: numbe
 }
 
 function setDayHover(dayBox: HTMLElement | null): void {
-    if (hoveredDayBox && hoveredDayBox !== dayBox) hoveredDayBox.classList.remove("drop-hover");
+    if (hoveredDayBox && hoveredDayBox !== dayBox)
+        hoveredDayBox.classList.remove("drop-hover");
+
     hoveredDayBox = dayBox;
-    if (hoveredDayBox) hoveredDayBox.classList.add("drop-hover");
+    if (hoveredDayBox)
+        hoveredDayBox.classList.add("drop-hover");
 }
 
 function setOngoingHover(on: boolean): void {
@@ -100,23 +111,17 @@ function setOngoingPreviewing(on: boolean): void {
     list.classList.toggle("previewing", on);
 }
 
-type ResetPreviewOpts = {
-    keepSourceHole: boolean;
-    removePreviewEl: boolean;
-};
-
+type ResetPreviewOpts = { keepSourceHole: boolean; removePreviewEl: boolean; };
 function resetPreview(opts: ResetPreviewOpts): void {
     if (opts.removePreviewEl) previewEl?.remove();
 
-    previewEl = null;
-    previewKind = null;
+    previewEl        = null;
+    previewKind      = null;
     previewContainer = null;
-    previewIndex = -1;
+    previewIndex     = -1;
 
     setOngoingPreviewing(false);
-
     repaintBaseOrders(opts.keepSourceHole);
-
     if (opts.keepSourceHole) applyDragSourceVisual();
 }
 
@@ -156,10 +161,12 @@ function setRowFilled(el: HTMLElement, task: Task, asPreview: boolean): void {
     el.dataset.taskId = String(task.id);
     el.title = "Click to edit";
 
-    const urgentMark = task.ongoing ? `<span class="urgent-pill">urgent</span>` : "";
     const title = escapeHtml(task.title);
     const notesPreview = task.notes?.trim()
         ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
+        : "";
+    const urgentMark = task.ongoing
+        ? `<span class="urgent-pill">urgent</span>`
         : "";
 
     el.innerHTML = `
@@ -258,20 +265,20 @@ function ensurePreview(kind: DragKind, container: HTMLElement): void {
         resetPreview({ keepSourceHole: true, removePreviewEl: true });
     }
 
-    previewKind = kind;
+    previewKind      = kind;
     previewContainer = container;
-    previewIndex = -1;
+    previewIndex     = -1;
 
-    if (kind === "ongoing") {
-        setOngoingPreviewing(true);
-        if (!previewEl) {
-            previewEl = buildPreview("ongoing", drag.taskId);
-            container.appendChild(previewEl);
-        }
+    if (kind !== "ongoing") {
+        rememberBaseOrder(container, drag.taskId);
         return;
     }
 
-    rememberBaseOrder(container, drag.taskId);
+    setOngoingPreviewing(true);
+
+    if (previewEl) return;
+    previewEl = buildPreview("ongoing", drag.taskId);
+    container.appendChild(previewEl);
 }
 
 function computeInsertIndex(
@@ -281,7 +288,7 @@ function computeInsertIndex(
     kind: DragKind,
     movingDown: boolean
 ): number {
-    if (drag.state === "active" &&
+    if (drag.state          === "active"  &&
         drag.startKind      === kind      &&
         drag.startContainer === container &&
         y >= drag.startRect.top &&
@@ -446,7 +453,7 @@ function beginDragFromPending(x: number, y: number): void {
 }
 
 function cleanupDragVisuals(): void {
-    const prev = drag;
+    const prev  = drag;
     const ghost = prev.state === "active" ? prev.ghostEl : null;
     suppressNextClick = false;
 
@@ -522,16 +529,12 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
 
     drag = { state: "idle" }
 
-    setDayHover    (null);
+    setDayHover(null);
     setOngoingHover(false);
 
     dragCopy.ghostEl.remove();
     document.body.classList.remove("dragging");
 
-    previewEl = null;
-    previewKind = null;
-    previewContainer = null;
-    previewIndex = -1;
     baseIdsByContainer.clear();
 
     try {
@@ -630,9 +633,9 @@ async function loadTasksForCurrentView(): Promise<void> {
     todayTasks   = await dbm.getTodayTasks();
 
     visibleTaskById = new Map<number, Task>();
-    for (const t of weekTasks)             visibleTaskById.set(t.id, t);
+    for (const t of weekTasks)    visibleTaskById.set(t.id, t);
     for (const t of ongoingTasks) visibleTaskById.set(t.id, t);
-    for (const t of todayTasks)            visibleTaskById.set(t.id, t);
+    for (const t of todayTasks)   visibleTaskById.set(t.id, t);
 }
 
 function renderWeekGrid(): void {
@@ -725,16 +728,11 @@ function renderWeekGrid(): void {
         `;
     };
 
-    const cells = [
-        `<div class="grid-cell">${renderDayBox(0)}</div>`,
-        `<div class="grid-cell">${renderDayBox(3)}</div>`,
-        `<div class="grid-cell">${renderDayBox(1)}</div>`,
-        `<div class="grid-cell">${renderDayBox(4)}</div>`,
-        `<div class="grid-cell">${renderDayBox(2)}</div>`,
-        `<div class="grid-cell">${renderDayBox(5)}</div>`,
-        `<div class="grid-cell">${renderTodayBox()}</div>`,
-        `<div class="grid-cell">${renderDayBox(6)}</div>`,
-    ].join("");
+    const dayOrder = [0, 3, 1, 4, 2, 5, -1, 6];
+
+    const cells = dayOrder
+        .map((i) => `<div class="grid-cell">${i === -1 ? renderTodayBox() : renderDayBox(i)}</div>`)
+        .join("");
 
     weekGrid.innerHTML = `
         <div class="week-grid-4x2">
@@ -791,16 +789,16 @@ function openModal(state: ModalState): void {
     const saveBtn      = qs<HTMLButtonElement>  ("#save-task-btn");
 
     const isCreate = state.mode === "create";
-    const task = state.mode === "edit" ? state.task : null;
-    const loc  = isCreate ? state.location : state.task.location;
+    const task     = state.mode === "edit" ? state.task : null;
+    const loc      = isCreate ? state.location : state.task.location;
 
     titleInput.value = task?.title ?? "";
     notesInput.value = task?.notes ?? "";
 
-    urgentField.hidden = loc.kind === "ongoing";
+    urgentField.hidden  = loc.kind === "ongoing";
     urgentInput.checked = loc.kind === "ongoing" ? true : (task?.ongoing ?? false);
 
-    deleteBtn.hidden = isCreate;
+    deleteBtn.hidden    = isCreate;
     saveBtn.textContent = isCreate ? "Create" : "Save";
 
     if (isCreate) {
@@ -841,9 +839,9 @@ function closeModal(): void {
 async function saveModal(): Promise<void> {
     if (!modalState) return;
 
-    const titleInput   = qs<HTMLInputElement>("#task-title-input");
+    const titleInput   = qs<HTMLInputElement>   ("#task-title-input");
     const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input");
-    const ongoingInput = qs<HTMLInputElement>("#task-urgent-input");
+    const ongoingInput = qs<HTMLInputElement>   ("#task-urgent-input");
 
     const title = titleInput.value.trim();
     const notes = notesInput.value.trim();
@@ -1174,7 +1172,7 @@ function wireEvents(): void {
 async function bootstrap(): Promise<void> {
     wireEvents();
 
-    const weekGrid   = document.querySelector<HTMLDivElement>("#week-grid");
+    const weekGrid    = document.querySelector<HTMLDivElement>("#week-grid");
     const ongoingList = document.querySelector<HTMLDivElement>("#ongoing-list");
     if (weekGrid)    weekGrid   .innerHTML = `<div class="loading-box">Loading…</div>`;
     if (ongoingList) ongoingList.innerHTML = `<div class="loading-box">Loading…</div>`;
