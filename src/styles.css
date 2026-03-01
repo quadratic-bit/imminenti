@@ -626,10 +626,10 @@ textarea {
 
 .task-row.drag-preview {
     background: var(--row-hover-bg);
-    border-color: var(--accent-2);
+    border-color: transparent;
 }
 
 .ongoing-item.drag-preview {
     background: var(--row-hover-bg);
-    border-color: var(--accent);
+    border-color: transparent;
 }
