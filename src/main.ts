@@ -45,7 +45,6 @@ type DragState = { state: "idle" }
 let drag: DragState = { state: "idle" };
 
 let hoveredDayBox: HTMLElement | null = null;
-let justDragged = false;
 
 let previewEl:        HTMLElement | null = null;
 let previewKind:      DragKind    | null = null;
@@ -401,6 +400,11 @@ function beginDragFromPending(x: number, y: number): void {
         setRowEmpty(drag.sourceEl);
     }
 
+    drag.sourceEl.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+    }, { capture: true, once: true });
+
     document.body.classList.add("dragging");
 
     drag = {
@@ -439,6 +443,7 @@ function beginDragFromPending(x: number, y: number): void {
 
 function cleanupDragVisuals(): void {
     const ghost = drag.state === "active" ? drag.ghostEl : null;
+    try { if (drag.state === "active") drag.sourceEl.releasePointerCapture(drag.pointerId); } catch {}
     drag = { state: "idle" }
 
     baseIdsByContainer.clear();
@@ -460,13 +465,15 @@ function cancelDrag(): void {
 async function finishDrag(dropX: number, dropY: number): Promise<void> {
     if (drag.state !== "active") return;
 
-    const dragCopy = drag;
+    const dragCopy  = drag;
     const draggedId = drag.taskId;
 
     const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", dropX, dropY);
-    const todayHit  = !!closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
+    const todayHit   = !!closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
     const dayBox = ongoingHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
     const dropDateKey = dayBox?.dataset.dayDate ?? null;
+
+    try { drag.sourceEl.releasePointerCapture(drag.pointerId); } catch {}
 
     let applyDbChange: (() => Promise<void>) | null = null;
 
@@ -948,8 +955,6 @@ async function refresh(): Promise<void> {
 }
 
 function wireEvents(): void {
-    justDragged = false;
-
     qs<HTMLButtonElement>("#prev-week-btn").addEventListener("click", async () => {
         currentWeekStart = addDays(currentWeekStart, -7);
         await refresh();
@@ -961,11 +966,6 @@ function wireEvents(): void {
     });
 
     qs<HTMLDivElement>("#week-grid").addEventListener("click", (e) => {
-        if (justDragged) {
-            justDragged = false;
-            return;
-        }
-
         const target = e.target as HTMLElement;
 
         const filledRow = target.closest<HTMLElement>(".task-row.filled");
@@ -995,11 +995,6 @@ function wireEvents(): void {
     });
 
     qs<HTMLDivElement>("#ongoing-list").addEventListener("click", (e) => {
-        if (justDragged) {
-            justDragged = false;
-            return;
-        }
-
         const target = e.target as HTMLElement;
         const item = target.closest<HTMLElement>(".ongoing-item");
         if (!item) return;
@@ -1039,10 +1034,12 @@ function wireEvents(): void {
 
         const inToday = !!row.closest(".today-box");
 
+        row.setPointerCapture(e.pointerId);
+
         drag = {
             state: "pending",
             taskId: id,
-            kind: inToday ? "today" : "day",
+            kind: (visibleTaskById.get(id)?.location.kind ?? (inToday ? "today" : "day")),
             pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
@@ -1058,6 +1055,8 @@ function wireEvents(): void {
 
         const id = Number(item.dataset.taskId);
         if (!Number.isFinite(id) || id <= 0) return;
+
+        item.setPointerCapture(e.pointerId);
 
         drag = {
             state: "pending",
