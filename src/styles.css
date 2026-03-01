@@ -49,7 +49,16 @@
     --input-bg:      var(--bg);
     --dialog-bg:     var(--panel);
 
-    --focus-shadow:  0 0 0 2px rgba(137, 180, 250, 0.18);
+    /* Alpha tokens */
+    --overlay-dim: color-mix(in srgb, #000 55%, transparent);
+    --ring-focus:  0 0 0 2px color-mix(in srgb, var(--accent)   18%, transparent);
+    --ring-today:  0 0 0 2px color-mix(in srgb, var(--accent)   22%, transparent);
+    --ring-hover:  0 0 0 2px color-mix(in srgb, var(--accent-2) 18%, transparent);
+    --ring-drop:   0 0 0 2px color-mix(in srgb, var(--accent)   22%, transparent);
+    --ring-preview:0 0 0 2px color-mix(in srgb, var(--accent)   14%, transparent);
+
+    /* Shadow tokens */
+    --ghost-shadow: 0 10px 30px color-mix(in srgb, #000 35%, transparent);
 }
 
 * {
@@ -223,7 +232,7 @@ textarea {
     display: grid;
     grid-template-columns: 40px 1fr;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 8px;
     overflow: hidden;
     background: var(--day-bg);
     cursor: pointer;
@@ -234,13 +243,13 @@ textarea {
 }
 
 .day-box.past:hover {
-    border-color: var(--accent-2);
+    border-color: color-mix(in srgb, var(--accent-2) 70%, var(--border));
 }
 
 /* highlight current day */
 .day-box.today {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.22);
+    box-shadow: var(--ring-today);
 }
 
 .day-box.today .day-label-strip {
@@ -431,7 +440,7 @@ textarea {
 }
 
 .task-dialog::backdrop {
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay-dim);
 }
 
 .dialog-body {
@@ -473,7 +482,7 @@ textarea {
 .field input:focus,
 .field textarea:focus {
     border-color: var(--accent);
-    box-shadow: var(--focus-shadow);
+    box-shadow: var(--ring-focus);
 }
 
 .field textarea {
@@ -518,7 +527,7 @@ body.dragging {
 
 .day-box.drop-hover {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.22);
+    box-shadow: var(--ring-drop);
 }
 
 .drag-ghost {
@@ -542,12 +551,12 @@ body.dragging {
     overflow: hidden;
     text-overflow: ellipsis;
 
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--ghost-shadow);
     opacity: 0.95;
 }
 
 .urgent-list.drop-hover-urgent {
-    box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.22);
+    box-shadow: var(--ring-drop);
     border-radius: 10px;
 }
 
@@ -558,7 +567,7 @@ body.dragging {
     height: 2px;
     border-radius: 999px;
     background: var(--accent);
-    box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.14);
+    box-shadow: var(--ring-preview);
     pointer-events: none;
     z-index: 2;
 }
