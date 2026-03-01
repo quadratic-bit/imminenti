@@ -233,6 +233,10 @@ textarea {
     border-color: var(--accent-2);
 }
 
+.day-box.past:hover {
+    border-color: var(--accent-2);
+}
+
 /* highlight current day */
 .day-box.today {
     border-color: var(--accent);
@@ -241,19 +245,6 @@ textarea {
 
 .day-box.today .day-label-strip {
     border-right-color: var(--accent);
-}
-
-/* dim finished days */
-.day-box.past {
-    opacity: 0.78;
-}
-
-.day-box.past .task-row.filled {
-    opacity: 0.78;
-}
-
-.day-box.past .task-row.empty {
-    opacity: 0.35;
 }
 
 /* reduce urgency in finished days */
@@ -309,8 +300,11 @@ textarea {
     background: var(--row-empty-bg);
 }
 
+.day-box.past .row-title { color: var(--muted-strong); }
+.day-box.past .row-notes { color: var(--muted); }
+.day-box.past .urgent-pill { filter: saturate(0.9); }
+
 .task-row.empty {
-    opacity: 0.55;
     border-color: var(--surface-0);
 }
 
