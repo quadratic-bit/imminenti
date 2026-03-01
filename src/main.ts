@@ -24,30 +24,30 @@ let modalState: ModalState | null = null;
 
 type DragKind = "day" | "ongoing" | "today";
 
-type PendingDrag = {
-    taskId:   number;
-    kind:     DragKind;
-    startX:   number;
-    startY:   number;
-    sourceEl: HTMLElement;
-};
+type DragState = { state: "idle" }
+               | { state: "pending";
+                   taskId: number;
+                   kind: DragKind;
+                   pointerId: number;
+                   startX: number;
+                   startY: number;
+                   sourceEl: HTMLElement; }
+               | { state: "active";
+                   taskId: number;
+                   kind: DragKind;
+                   pointerId: number;
+                   sourceEl: HTMLElement;
+                   ghostEl: HTMLDivElement;
 
-type ActiveDrag = {
-    taskId:   number;
-    kind:     DragKind;
-    sourceEl: HTMLElement;
-    ghostEl:  HTMLDivElement;
+                   startRect: DOMRect;
+                   startKind: DragKind;
+                   startContainer: HTMLElement | null;
+                   startIndex: number;
 
-    startRect:      DOMRect;
-    startKind:      DragKind;
-    startContainer: HTMLElement | null;
-    startIndex:     number;
-};
+                   lastY: number;
+                   movingDown: boolean; };
 
-let pendingDrag: PendingDrag | null = null;
-let activeDrag:  ActiveDrag  | null = null;
-let dragLastY = 0;
-let dragMovingDown = true;
+let drag: DragState = { state: "idle" };
 
 let hoveredDayBox: HTMLElement | null = null;
 let justDragged = false;
@@ -68,14 +68,13 @@ function repaintBaseOrders(keepSourceHole: boolean): void {
     for (const [container, base] of baseIdsByContainer) {
         let ids = base;
 
-        if (
-            keepSourceHole &&
-            activeDrag &&
-            activeDrag.startKind !== "ongoing" &&
-            activeDrag.startContainer === container
+        if (keepSourceHole &&
+            drag.state === "active" &&
+            drag.startKind !== "ongoing" &&
+            drag.startContainer === container
         ) {
             ids = base.slice();
-            ids.splice(activeDrag.startIndex, 0, -1); // sentinel => empty row
+            ids.splice(drag.startIndex, 0, -1);
         }
 
         paintGrid(container, ids, null);
@@ -131,16 +130,16 @@ function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
 }
 
 function applyDragSourceVisual(): void {
-    if (!activeDrag) return;
+    if (drag.state !== "active") return;
 
-    if (activeDrag.kind === "ongoing") {
-        activeDrag.sourceEl.classList.add("drag-source");
-        activeDrag.sourceEl.style.display = "none";
+    if (drag.kind === "ongoing") {
+        drag.sourceEl.classList.add("drag-source");
+        drag.sourceEl.style.display = "none";
         return;
     }
 
-    activeDrag.sourceEl.classList.add("drag-source");
-    setRowEmpty(activeDrag.sourceEl);
+    drag.sourceEl.classList.add("drag-source");
+    setRowEmpty(drag.sourceEl);
 }
 
 function setRowEmpty(el: HTMLElement): void {
@@ -251,7 +250,7 @@ function buildPreview(kind: DragKind, taskId: number): HTMLElement {
 }
 
 function ensurePreview(kind: DragKind, container: HTMLElement): void {
-    if (!activeDrag) return;
+    if (drag.state !== "active") return;
 
     if (previewKind !== kind || previewContainer !== container) {
         resetPreview({ keepSourceHole: true, removePreviewEl: true });
@@ -264,13 +263,13 @@ function ensurePreview(kind: DragKind, container: HTMLElement): void {
     if (kind === "ongoing") {
         setOngoingPreviewing(true);
         if (!previewEl) {
-            previewEl = buildPreview("ongoing", activeDrag.taskId);
+            previewEl = buildPreview("ongoing", drag.taskId);
             container.appendChild(previewEl);
         }
         return;
     }
 
-    rememberBaseOrder(container, activeDrag.taskId);
+    rememberBaseOrder(container, drag.taskId);
 }
 
 function computeInsertIndex(
@@ -280,13 +279,13 @@ function computeInsertIndex(
     kind: DragKind,
     movingDown: boolean
 ): number {
-    if (activeDrag &&
-        activeDrag.startKind      === kind      &&
-        activeDrag.startContainer === container &&
-        y >= activeDrag.startRect.top &&
-        y <= activeDrag.startRect.bottom
+    if (drag.state === "active" &&
+        drag.startKind      === kind      &&
+        drag.startContainer === container &&
+        y >= drag.startRect.top &&
+        y <= drag.startRect.bottom
     ) {
-        return Math.max(0, Math.min(activeDrag.startIndex, items.length));
+        return Math.max(0, Math.min(drag.startIndex, items.length));
     }
 
     if (movingDown) {
@@ -311,7 +310,7 @@ function showGridPreview(
     pointerY: number,
     movingDown: boolean
 ): void {
-    if (!activeDrag) return;
+    if (drag.state !== "active") return;
 
     const container = box.querySelector<HTMLElement>(".day-rows");
     if (!container) return;
@@ -320,20 +319,21 @@ function showGridPreview(
 
     const items = Array
         .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
-        .filter((el) => Number(el.dataset.taskId) !== activeDrag!.taskId);
+        .filter((el) => Number(el.dataset.taskId) !== (drag as any).taskId); // FIXME: lacking type knowledge?
 
     const idx = computeInsertIndex(items, pointerY, container, kind, movingDown);
     if (idx === previewIndex) return;
     previewIndex = idx;
 
-    const base = idsInGrid(container).filter((id) => id !== activeDrag!.taskId);
-    base.splice(Math.max(0, Math.min(idx, base.length)), 0, activeDrag!.taskId);
+    const base = idsInGrid(container).filter((id) => id !== (drag as any).taskId);  // FIXME: lacking type knowledge?
+    base.splice(Math.max(0, Math.min(idx, base.length)), 0, drag.taskId);
 
-    paintGrid(container, base, activeDrag.taskId);
+    paintGrid(container, base, drag.taskId);
 }
 
 function showOngoingPreview(pointerY: number, movingDown: boolean): void {
-    if (!activeDrag) return;
+    if (drag.state !== "active") return;
+
     const container = document.querySelector<HTMLElement>("#ongoing-list");
     if (!container) return;
 
@@ -370,10 +370,10 @@ function orderFromDom(container: HTMLElement, selector: string, draggedId: numbe
 }
 
 function beginDragFromPending(x: number, y: number): void {
-    if (!pendingDrag) return;
+    if (drag.state !== "pending") return;
 
-    const task  = visibleTaskById.get(pendingDrag.taskId);
-    const title = task?.title ?? `#${pendingDrag.taskId}`;
+    const task  = visibleTaskById.get(drag.taskId);
+    const title = task?.title ?? `#${drag.taskId}`;
 
     const ghost = document.createElement("div");
     ghost.className   = "drag-ghost";
@@ -381,61 +381,60 @@ function beginDragFromPending(x: number, y: number): void {
     document.body.appendChild(ghost);
     updateGhostPosition(ghost, x, y);
 
-    const startRect = pendingDrag.sourceEl.getBoundingClientRect();
+    const startRect = drag.sourceEl.getBoundingClientRect();
 
     let startContainer: HTMLElement | null = null;
     let startIndex = 0;
 
-    if (pendingDrag.kind !== "ongoing") {
-        startContainer = pendingDrag.sourceEl.closest<HTMLElement>(".day-rows");
-        if (startContainer) startIndex = indexOfFilledRow(startContainer, pendingDrag.sourceEl);
+    if (drag.kind !== "ongoing") {
+        startContainer = drag.sourceEl.closest<HTMLElement>(".day-rows");
+        if (startContainer) startIndex = indexOfFilledRow(startContainer, drag.sourceEl);
     } else {
         startContainer = document.querySelector<HTMLElement>("#ongoing-list");
         if (startContainer) {
             const items = Array.from(startContainer.querySelectorAll<HTMLElement>(".ongoing-item"));
-            const idx = items.indexOf(pendingDrag.sourceEl);
+            const idx = items.indexOf(drag.sourceEl);
             startIndex = idx < 0 ? 0 : idx;
         }
     }
 
-    pendingDrag.sourceEl.classList.add("drag-source");
+    drag.sourceEl.classList.add("drag-source");
 
-    if (pendingDrag.kind === "ongoing") {
-        pendingDrag.sourceEl.style.display = "none";
+    if (drag.kind === "ongoing") {
+        drag.sourceEl.style.display = "none";
     } else {
-        setRowEmpty(pendingDrag.sourceEl);
+        setRowEmpty(drag.sourceEl);
     }
 
     document.body.classList.add("dragging");
 
-    activeDrag = {
-        taskId: pendingDrag.taskId,
-        kind: pendingDrag.kind,
-        sourceEl: pendingDrag.sourceEl,
+    drag = {
+        state: "active",
+        taskId: drag.taskId,
+        kind: drag.kind,
+        pointerId: drag.pointerId,
+        sourceEl: drag.sourceEl,
         ghostEl: ghost,
         startRect,
-        startKind: pendingDrag.kind,
+        startKind: drag.kind,
         startContainer,
         startIndex,
+        lastY: y,
+        movingDown: true,
     };
-    dragLastY = y;
-    dragMovingDown = true;
 
-    pendingDrag = null;
-    justDragged = true;
-
-    if (activeDrag.kind === "ongoing") {
+    if (drag.kind === "ongoing") {
         setOngoingHover(true);
         showOngoingPreview(y, true);
-    } else if (activeDrag.kind === "today") {
+    } else if (drag.kind === "today") {
         const box = closestAtPoint<HTMLElement>(".today-box", x, y)
-            ?? activeDrag.sourceEl.closest<HTMLElement>(".today-box");
+            ?? drag.sourceEl.closest<HTMLElement>(".today-box");
         if (!box) return;
 
         setDayHover(box);
         showGridPreview("today", box, y, true);
     } else {
-        const box = activeDrag.sourceEl.closest<HTMLElement>(".day-box");
+        const box = drag.sourceEl.closest<HTMLElement>(".day-box");
         if (!box) return;
 
         setDayHover(box);
@@ -444,9 +443,8 @@ function beginDragFromPending(x: number, y: number): void {
 }
 
 function cleanupDragVisuals(): void {
-    pendingDrag = null;
-    const drag = activeDrag;
-    activeDrag = null;
+    const ghost = drag.state === "active" ? drag.ghostEl : null;
+    drag = { state: "idle" }
 
     baseIdsByContainer.clear();
 
@@ -454,7 +452,7 @@ function cleanupDragVisuals(): void {
     setOngoingHover(false);
     document.body.classList.remove("dragging");
 
-    if (drag) drag.ghostEl.remove();
+    if (ghost) ghost.remove();
 
     resetPreview({ keepSourceHole: false, removePreviewEl: true });
     renderAll();
@@ -465,9 +463,9 @@ function cancelDrag(): void {
 }
 
 async function finishDrag(dropX: number, dropY: number): Promise<void> {
-    if (!activeDrag) return;
+    if (drag.state !== "active") return;
 
-    const drag = activeDrag;
+    const dragCopy = drag;
     const draggedId = drag.taskId;
 
     const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", dropX, dropY);
@@ -518,13 +516,12 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
         return;
     }
 
-    pendingDrag = null;
-    activeDrag  = null;
+    drag = { state: "idle" }
 
-    setDayHover   (null);
+    setDayHover    (null);
     setOngoingHover(false);
 
-    drag.ghostEl.remove();
+    dragCopy.ghostEl.remove();
     document.body.classList.remove("dragging");
 
     previewEl = null;
@@ -537,7 +534,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
         await applyDbChange();
         await refresh();
     } catch (err) {
-        activeDrag = drag;
+        drag = dragCopy;
         resetPreview({ keepSourceHole: false, removePreviewEl: true });
         cleanupDragVisuals();
         throw err;
@@ -1061,9 +1058,11 @@ function wireEvents(): void {
 
         const inToday = !!row.closest(".today-box");
 
-        pendingDrag = {
+        drag = {
+            state: "pending",
             taskId: id,
             kind: inToday ? "today" : "day",
+            pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
             sourceEl: row,
@@ -1079,9 +1078,11 @@ function wireEvents(): void {
         const id = Number(item.dataset.taskId);
         if (!Number.isFinite(id) || id <= 0) return;
 
-        pendingDrag = {
+        drag = {
+            state: "pending",
             taskId: id,
             kind: "ongoing",
+            pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
             sourceEl: item,
@@ -1089,63 +1090,68 @@ function wireEvents(): void {
     }, { capture: true });
 
     window.addEventListener("pointermove", (e) => {
-        if (!pendingDrag && !activeDrag) return;
+        if (drag.state === "idle") return;
+        if (e.pointerId !== drag.pointerId) return;
 
-        if (pendingDrag && !activeDrag) {
-            const dx = e.clientX - pendingDrag.startX;
-            const dy = e.clientY - pendingDrag.startY;
+        if (drag.state === "pending") {
+            const dx = e.clientX - drag.startX;
+            const dy = e.clientY - drag.startY;
             if ((dx * dx + dy * dy) < 36) return;
             beginDragFromPending(e.clientX, e.clientY);
             return;
         }
 
-        if (!activeDrag) return;
-
         e.preventDefault();
 
-        updateGhostPosition(activeDrag.ghostEl, e.clientX, e.clientY);
-        if (e.clientY !== dragLastY) dragMovingDown = e.clientY > dragLastY;
-        dragLastY = e.clientY;
+        updateGhostPosition(drag.ghostEl, e.clientX, e.clientY);
+        if (e.clientY !== drag.lastY) drag.movingDown = e.clientY > drag.lastY;
+        drag.lastY = e.clientY;
 
         const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", e.clientX, e.clientY);
         setOngoingHover(ongoingHit);
 
         if (ongoingHit) {
             setDayHover(null);
-            showOngoingPreview(e.clientY, dragMovingDown);
+            showOngoingPreview(e.clientY, drag.movingDown);
             return;
         }
 
         const todayBox = closestAtPoint<HTMLElement>(".today-box", e.clientX, e.clientY);
         if (todayBox) {
             setDayHover(todayBox);
-            showGridPreview("today", todayBox, e.clientY, dragMovingDown);
+            showGridPreview("today", todayBox, e.clientY, drag.movingDown);
             return;
         }
 
         const dayBox = closestAtPoint<HTMLElement>(".day-box", e.clientX, e.clientY);
         setDayHover(dayBox);
 
-        if (dayBox) showGridPreview("day", dayBox, e.clientY, dragMovingDown);
+        if (dayBox) showGridPreview("day", dayBox, e.clientY, drag.movingDown);
         else resetPreview({ keepSourceHole: true, removePreviewEl: true });
     }, { passive: false });
 
     window.addEventListener("pointerup", async (e) => {
-        if (!pendingDrag && !activeDrag) return;
+        if (drag.state === "idle") return;
+        if (e.pointerId !== drag.pointerId) return;
 
-        if (activeDrag) {
+        if (drag.state === "active") {
             try {
                 await finishDrag(e.clientX, e.clientY);
             } catch (err) {
                 console.error(err);
                 cancelDrag();
             }
-        } else {
-            pendingDrag = null;
         }
+
+        drag = { state: "idle" };
     });
 
-    window.addEventListener("pointercancel", () => cancelDrag());
+    window.addEventListener("pointercancel", (e) => {
+        if (drag.state === "idle") return;
+        if (e.pointerId !== drag.pointerId) return;
+        cancelDrag();
+        drag = { state: "idle" };
+    });
 
     const dialog = qs<HTMLDialogElement>("#task-dialog");
     dialog.addEventListener("cancel", (e) => {
