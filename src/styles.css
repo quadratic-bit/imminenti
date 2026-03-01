@@ -49,6 +49,11 @@
     --input-bg:      var(--bg);
     --dialog-bg:     var(--panel);
 
+    --bg-current-day:       color-mix(in srgb, var(--day-bg)   72%, var(--accent)   28%);
+    --bg-today-box:         color-mix(in srgb, var(--day-bg)   72%, var(--accent-2) 28%);
+    --bg-current-strip:     color-mix(in srgb, var(--label-bg) 78%, var(--accent)   22%);
+    --bg-current-strip-alt: color-mix(in srgb, var(--label-bg) 78%, var(--accent-2) 22%);
+
     /* Alpha tokens */
     --overlay-dim: color-mix(in srgb, #000 55%, transparent);
     --ring-focus:  0 0 0 2px color-mix(in srgb, var(--accent)   18%, transparent);
@@ -219,12 +224,6 @@ textarea {
     height: 100%;
 }
 
-.empty-grid-cell {
-    border: 1px dashed var(--border);
-    border-radius: 10px;
-    background: var(--panel-2);
-}
-
 /* Day boxes */
 .day-box {
     min-height: 0;
@@ -247,13 +246,15 @@ textarea {
 }
 
 /* highlight current day */
-.day-box.today {
+.day-box.current-day {
     border-color: var(--accent);
     box-shadow: var(--ring-today);
+    background: var(--bg-current-day);
 }
 
-.day-box.today .day-label-strip {
-    border-right-color: var(--accent);
+.day-box.current-day .day-label-strip {
+    background: var(--bg-current-strip);
+    border-right-color: color-mix(in srgb, var(--border) 60%, var(--accent));
 }
 
 /* reduce urgency in finished days */
@@ -411,7 +412,44 @@ textarea {
     overflow-wrap: anywhere;
 }
 
-/* Empty / loading / error */
+/* Today box */
+.grid-cell > .today-box {
+    flex: 1 1 auto;
+    height: 100%;
+}
+
+.today-box {
+    min-height: 0;
+    height: 100%;
+    display: grid;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-today-box);
+    cursor: pointer;
+}
+
+.today-box:hover {
+    border-color: color-mix(in srgb, var(--accent-2) 80%, var(--border));
+}
+
+.day-box.today-box .day-label-strip {
+    background: var(--bg-current-strip-alt);
+    border-radius: 8px 0 0 8px;
+    border: 1px solid color-mix(in srgb, var(--border) 60%, var(--accent-2));
+}
+
+.day-box.today-box {
+    background: var(--bg-today-box);
+}
+
+.day-label-today {
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    letter-spacing: 0.06em;
+    color: var(--muted-strong);
+}
+
 .empty-urgent,
 .loading-box {
     border: 1px dashed var(--border);

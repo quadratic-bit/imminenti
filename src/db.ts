@@ -9,6 +9,7 @@ type TaskRow = {
     notes:      string | null;
     due_date:   string | null; // YYYY-MM-DD
     is_urgent:  number;        // 0/1
+    is_today:   number;        // 0/1
     sort_order: number;
     created_at: string;
     updated_at: string;
@@ -20,6 +21,7 @@ const toTask = (r: TaskRow): Task => ({
     notes: r.notes ?? "",
     due_date: (r.due_date as any) ?? null,
     urgent: r.is_urgent === 1,
+    today:  r.is_today === 1,
     sort_order: r.sort_order,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -39,6 +41,7 @@ export class DBManager {
                 notes      TEXT             DEFAULT '',
                 due_date   TEXT    NULL,                   -- YYYY-MM-DD or NULL
                 is_urgent  INTEGER NOT NULL DEFAULT 0 CHECK (is_urgent IN (0,1)),
+                is_today   INTEGER NOT NULL DEFAULT 0 CHECK (is_today  IN (0,1)),
                 created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -54,6 +57,11 @@ export class DBManager {
             ON tasks(is_urgent, due_date)
         `);
 
+        await db.execute(`
+            CREATE INDEX IF NOT EXISTS idx_tasks_today
+            ON tasks(is_today)
+        `);
+
         return db;
     }
 
@@ -66,9 +74,9 @@ export class DBManager {
         const db = await this.get();
         const weekTasks = await db.select<TaskRow[]>(
             `
-            SELECT id, title, notes, due_date, is_urgent, sort_order, created_at, updated_at
+            SELECT id, title, notes, due_date, is_urgent, is_today, sort_order, created_at, updated_at
             FROM tasks
-            WHERE due_date >= ? AND due_date <= ?
+            WHERE due_date >= ? AND due_date <= ? AND is_today = 0
             ORDER BY due_date ASC, sort_order ASC, id ASC
             `,
             [weekStartKey, weekEndKey]
@@ -79,12 +87,23 @@ export class DBManager {
     async getUrgentTasks(): Promise<Task[]> {
         const db = await this.get();
         const urgentTasks = await db.select<TaskRow[]>(`
-            SELECT id, title, notes, due_date, is_urgent, sort_order, created_at, updated_at
+            SELECT id, title, notes, due_date, is_urgent, is_today, sort_order, created_at, updated_at
             FROM tasks
-            WHERE due_date IS NULL AND is_urgent = 1
+            WHERE due_date IS NULL AND is_urgent = 1 AND is_today = 0
             ORDER BY sort_order ASC, id ASC
         `);
         return urgentTasks.map(toTask);
+    }
+
+    async getTodayTasks(): Promise<Task[]> {
+        const db = await this.get();
+        const rows = await db.select<TaskRow[]>(`
+            SELECT id, title, notes, due_date, is_urgent, is_today, sort_order, created_at, updated_at
+            FROM tasks
+            WHERE is_today = 1
+            ORDER BY sort_order ASC, id ASC
+        `);
+        return rows.map(toTask);
     }
 
     async setSortOrder(ids: number[]): Promise<void> {
@@ -104,7 +123,11 @@ export class DBManager {
     async moveTaskToUrgent(taskId: number): Promise<void> {
         const db = await this.get();
         await db.execute(
-            `UPDATE tasks SET due_date = NULL, is_urgent = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            `
+            UPDATE tasks
+            SET due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
             [taskId]
         );
     }
@@ -112,8 +135,24 @@ export class DBManager {
     async moveTaskToDay(taskId: number, dateKey: string): Promise<void> {
         const db = await this.get();
         await db.execute(
-            `UPDATE tasks SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            `
+            UPDATE tasks
+            SET due_date = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
             [dateKey, taskId]
+        );
+    }
+
+    async moveTaskToToday(taskId: number): Promise<void> {
+        const db = await this.get();
+        await db.execute(
+            `
+            UPDATE tasks
+            SET due_date = NULL, is_today = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
+            [taskId]
         );
     }
 

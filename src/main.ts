@@ -4,8 +4,10 @@ import { Task, DateKey } from "./task";
 
 type ModalState = { mode: "create"; target: "day";    dateKey: string }
                 | { mode: "create"; target: "urgent"                  }
+                | { mode: "create"; target: "today"                   }
                 | { mode: "edit";   target: "day";    task: Task      }
-                | { mode: "edit";   target: "urgent"; task: Task      };
+                | { mode: "edit";   target: "urgent"; task: Task      }
+                | { mode: "edit";   target: "today";  task: Task      };
 
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -16,10 +18,11 @@ let currentWeekStart = startOfWeek(new Date());
 let weekTasks: Task[] = [];
 let urgentNoDeadlineTasks: Task[] = [];
 let visibleTaskById = new Map<number, Task>();
+let todayTasks: Task[] = [];
 
 let modalState: ModalState | null = null;
 
-type DragKind = "day" | "urgent";
+type DragKind = "day" | "urgent" | "today";
 
 type PendingDrag = {
     taskId:   number;
@@ -27,6 +30,14 @@ type PendingDrag = {
     startX:   number;
     startY:   number;
     sourceEl: HTMLElement;
+};
+
+type SourceElSnap = {
+    className: string;
+    innerHTML: string;
+    taskId?:   string;
+    title:     string;
+    display:   string;
 };
 
 type ActiveDrag = {
@@ -39,6 +50,8 @@ type ActiveDrag = {
     startKind:      DragKind;
     startContainer: HTMLElement | null;
     startIndex:     number;
+
+    sourceSnap: SourceElSnap;
 };
 
 let pendingDrag: PendingDrag | null = null;
@@ -53,8 +66,6 @@ let previewEl:        HTMLElement | null = null;
 let previewKind:      DragKind    | null = null;
 let previewContainer: HTMLElement | null = null;
 let previewIndex = -1;
-
-let borrowedEmpty: { row: HTMLElement; parent: HTMLElement } | null = null;
 
 function closestAtPoint<T extends Element>(selector: string, x: number, y: number): T | null {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
@@ -83,24 +94,143 @@ function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
     ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
 }
 
-function restoreBorrowedEmpty(): void {
-    if (!borrowedEmpty) return;
+type RowSnap = {
+    el: HTMLElement;
+    className: string;
+    innerHTML: string;
+    taskId?: string;
+    title?: string;
+};
 
-    if (borrowedEmpty.parent.isConnected)
-        borrowedEmpty.parent.appendChild(borrowedEmpty.row);
+type ContainerSnap = {
+    origCount: number;
+    rows: RowSnap[];
+};
 
-    borrowedEmpty = null;
+const containerSnaps = new Map<HTMLElement, ContainerSnap>();
+
+function snapContainer(container: HTMLElement): void {
+    if (containerSnaps.has(container)) return;
+
+    const rows = Array.from(container.querySelectorAll<HTMLElement>(".task-row"));
+    containerSnaps.set(container, {
+        origCount: rows.length,
+        rows: rows.map((el) => ({
+            el,
+            className: el.className,
+            innerHTML: el.innerHTML,
+            taskId: el.dataset.taskId,
+            title: el.title,
+        })),
+    });
 }
 
-function borrowEmptyRow(container: HTMLElement): void {
-    if (borrowedEmpty?.parent === container) return;
-    restoreBorrowedEmpty();
+function restoreContainer(container: HTMLElement): void {
+    const snap = containerSnaps.get(container);
+    if (!snap) return;
 
-    const empty = container.querySelector<HTMLElement>(".task-row.empty");
-    if (!empty) return;
+    for (const r of snap.rows) {
+        r.el.className = r.className;
+        r.el.innerHTML = r.innerHTML;
+        if (r.taskId !== undefined) r.el.dataset.taskId = r.taskId;
+        else delete r.el.dataset.taskId;
+        r.el.title = r.title ?? "";
+    }
 
-    borrowedEmpty = { row: empty, parent: container };
-    empty.remove();
+    const rowsNow = Array.from(container.querySelectorAll<HTMLElement>(".task-row"));
+    for (let i = rowsNow.length - 1; i >= snap.origCount; i--) rowsNow[i].remove();
+
+    containerSnaps.delete(container);
+}
+
+function restoreAllContainers(): void {
+    for (const c of Array.from(containerSnaps.keys())) restoreContainer(c);
+}
+
+function applyDragSourceVisual(): void {
+    if (!activeDrag) return;
+
+    if (activeDrag.kind === "urgent") {
+        activeDrag.sourceEl.classList.add("drag-source");
+        activeDrag.sourceEl.style.display = "none";
+        return;
+    }
+
+    activeDrag.sourceEl.classList.add("drag-source");
+    setRowEmpty(activeDrag.sourceEl);
+}
+
+function clearDragPreview(keepSourceHole: boolean): void {
+    if (previewKind === "urgent") previewEl?.remove();
+
+    previewEl = null;
+    previewKind = null;
+    previewContainer = null;
+    previewIndex = -1;
+
+    setUrgentPreviewing(false);
+
+    restoreAllContainers();
+
+    if (keepSourceHole) applyDragSourceVisual();
+}
+
+function setRowEmpty(el: HTMLElement): void {
+    el.className = "task-row empty";
+    el.innerHTML = "";
+    delete el.dataset.taskId;
+    el.title = "";
+}
+
+function setRowFilled(el: HTMLElement, task: Task, asPreview: boolean): void {
+    el.className = `task-row filled${asPreview ? " drag-preview" : ""}`;
+    el.dataset.taskId = String(task.id);
+    el.title = "Click to edit";
+
+    const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
+    const title = escapeHtml(task.title);
+    const notesPreview = task.notes?.trim()
+        ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
+        : "";
+
+    el.innerHTML = `
+        <div class="row-main">
+            <span class="row-title">${title}</span>
+            ${notesPreview}
+        </div>
+        ${urgentMark}
+    `;
+}
+
+function paintGrid(container: HTMLElement, ids: number[], previewId: number | null): void {
+    const rows = Array.from(container.querySelectorAll<HTMLElement>(".task-row"));
+
+    while (rows.length < ids.length) {
+        const r = document.createElement("div");
+        r.className = "task-row empty";
+        container.appendChild(r);
+        rows.push(r);
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+        const id = ids[i];
+        if (id === undefined) {
+            setRowEmpty(rows[i]);
+            continue;
+        }
+        const t = visibleTaskById.get(id);
+        if (!t) {
+            setRowEmpty(rows[i]);
+            continue;
+        }
+        setRowFilled(rows[i], t, previewId !== null && id === previewId);
+    }
+}
+
+function idsInGrid(container: HTMLElement): number[] {
+    return Array.from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
+        .map((el) => Number(el.dataset.taskId))
+        .filter((n) => Number.isFinite(n) && n > 0);
 }
 
 function clearPreview(): void {
@@ -110,7 +240,6 @@ function clearPreview(): void {
     previewContainer = null;
     previewIndex     = -1;
 
-    restoreBorrowedEmpty();
     setUrgentPreviewing(false);
 }
 
@@ -159,18 +288,25 @@ function buildPreview(kind: DragKind, taskId: number): HTMLElement {
 
 function ensurePreview(kind: DragKind, container: HTMLElement): void {
     if (!activeDrag) return;
-    if (previewEl && previewKind === kind && previewContainer === container) return;
 
-    clearPreview();
+    if (previewKind !== kind || previewContainer !== container) {
+        clearDragPreview(true);
+    }
+
     previewKind = kind;
     previewContainer = container;
-    previewEl = buildPreview(kind, activeDrag.taskId);
     previewIndex = -1;
 
-    if (kind === "day") borrowEmptyRow(container);
-    else setUrgentPreviewing(true);
+    if (kind === "urgent") {
+        setUrgentPreviewing(true);
+        if (!previewEl) {
+            previewEl = buildPreview("urgent", activeDrag.taskId);
+            container.appendChild(previewEl);
+        }
+        return;
+    }
 
-    container.appendChild(previewEl);
+    snapContainer(container);
 }
 
 function computeInsertIndex(
@@ -214,17 +350,37 @@ function showDayPreview(dayBox: HTMLElement, pointerY: number, movingDown: boole
 
     const items = Array
         .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
-        .filter((el) => !el.classList.contains("drag-preview"))
-        .filter((el) => !el.classList.contains("drag-source"));
+        .filter((el) => Number(el.dataset.taskId) !== activeDrag!.taskId);
 
     const idx = computeInsertIndex(items, pointerY, container, "day", movingDown);
     if (idx === previewIndex) return;
     previewIndex = idx;
 
-    const ref = items[idx]
-        ?? container.querySelector<HTMLElement>(".task-row.empty")
-        ?? null;
-    if (previewEl) container.insertBefore(previewEl, ref);
+    const base = idsInGrid(container).filter((id) => id !== activeDrag!.taskId);
+    base.splice(Math.max(0, Math.min(idx, base.length)), 0, activeDrag!.taskId);
+
+    paintGrid(container, base, activeDrag.taskId);
+}
+
+function showTodayPreview(todayBox: HTMLElement, pointerY: number, movingDown: boolean): void {
+    if (!activeDrag) return;
+    const container = todayBox.querySelector<HTMLElement>(".day-rows");
+    if (!container) return;
+
+    ensurePreview("today", container);
+
+    const items = Array
+        .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
+        .filter((el) => Number(el.dataset.taskId) !== activeDrag!.taskId);
+
+    const idx = computeInsertIndex(items, pointerY, container, "today", movingDown);
+    if (idx === previewIndex) return;
+    previewIndex = idx;
+
+    const base = idsInGrid(container).filter((id) => id !== activeDrag!.taskId);
+    base.splice(Math.max(0, Math.min(idx, base.length)), 0, activeDrag!.taskId);
+
+    paintGrid(container, base, activeDrag.taskId);
 }
 
 function showUrgentPreview(pointerY: number, movingDown: boolean): void {
@@ -264,8 +420,29 @@ function orderFromDom(container: HTMLElement, selector: string, draggedId: numbe
     return ids;
 }
 
+function snapSourceEl(el: HTMLElement): SourceElSnap {
+    return {
+        className: el.className,
+        innerHTML: el.innerHTML,
+        taskId: el.dataset.taskId,
+        title: el.title,
+        display: el.style.display,
+    };
+}
+
+function restoreSourceEl(el: HTMLElement, s: SourceElSnap): void {
+    el.className = s.className;
+    el.innerHTML = s.innerHTML;
+    if (s.taskId !== undefined) el.dataset.taskId = s.taskId;
+    else delete el.dataset.taskId;
+    el.title = s.title;
+    el.style.display = s.display;
+}
+
 function beginDragFromPending(x: number, y: number): void {
     if (!pendingDrag) return;
+
+    const sourceSnap = snapSourceEl(pendingDrag.sourceEl);
 
     const task  = visibleTaskById.get(pendingDrag.taskId);
     const title = task?.title ?? `#${pendingDrag.taskId}`;
@@ -281,7 +458,13 @@ function beginDragFromPending(x: number, y: number): void {
     let startContainer: HTMLElement | null = null;
     let startIndex = 0;
 
-    if (pendingDrag.kind === "day") {
+    if (pendingDrag.kind === "today") {
+        startContainer = pendingDrag.sourceEl.closest<HTMLElement>(".day-rows");
+        if (startContainer) {
+            const filled = Array.from(startContainer.querySelectorAll<HTMLElement>(".task-row.filled"));
+            startIndex = filled.indexOf(pendingDrag.sourceEl);
+        }
+    } else if (pendingDrag.kind === "day") {
         startContainer = pendingDrag.sourceEl.closest<HTMLElement>(".day-rows");
         if (startContainer) {
             const filled = Array.from(startContainer.querySelectorAll<HTMLElement>(".task-row.filled"));
@@ -297,7 +480,13 @@ function beginDragFromPending(x: number, y: number): void {
     if (startIndex < 0) startIndex = 0;
 
     pendingDrag.sourceEl.classList.add("drag-source");
-    pendingDrag.sourceEl.style.display = "none";
+
+    if (pendingDrag.kind === "urgent") {
+        pendingDrag.sourceEl.style.display = "none";
+    } else {
+        setRowEmpty(pendingDrag.sourceEl);
+    }
+
     document.body.classList.add("dragging");
 
     activeDrag = {
@@ -309,6 +498,7 @@ function beginDragFromPending(x: number, y: number): void {
         startKind: pendingDrag.kind,
         startContainer,
         startIndex,
+        sourceSnap,
     };
     dragLastY = y;
     dragMovingDown = true;
@@ -319,27 +509,46 @@ function beginDragFromPending(x: number, y: number): void {
     if (activeDrag.kind === "urgent") {
         setUrgentHover(true);
         showUrgentPreview(y, true);
+    } else if (activeDrag.kind === "today") {
+        const box = closestAtPoint<HTMLElement>(".today-box", x, y)
+            ?? activeDrag.sourceEl.closest<HTMLElement>(".today-box");
+        if (!box) return;
+
+        setDayHover(box);
+        showTodayPreview(box, y, true);
     } else {
         const box = activeDrag.sourceEl.closest<HTMLElement>(".day-box");
-        if (box) {
-            setDayHover(box);
-            showDayPreview(box, y, true);
-        }
+        if (!box) return;
+
+        setDayHover(box);
+        showDayPreview(box, y, true);
     }
 }
 
 function cleanupDragVisuals(): void {
-    if (activeDrag) {
-        activeDrag.sourceEl.classList.remove("drag-source");
-        activeDrag.sourceEl.style.display = "";
-        activeDrag.ghostEl.remove();
-    }
+    const drag = activeDrag;
+
     pendingDrag = null;
     activeDrag  = null;
 
+    restoreAllContainers();
+
+    if (drag) {
+        restoreSourceEl(drag.sourceEl, drag.sourceSnap);
+        drag.sourceEl.classList.remove("drag-source");
+        drag.ghostEl.remove();
+    }
+
+    previewEl?.remove();
+    previewEl = null;
+    setUrgentPreviewing(false);
+
+    previewKind = null;
+    previewContainer = null;
+    previewIndex = -1;
+
     setDayHover(null);
     setUrgentHover(false);
-    clearPreview();
     document.body.classList.remove("dragging");
 }
 
@@ -354,6 +563,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     const draggedId = drag.taskId;
 
     const urgentHit = !!closestAtPoint<HTMLElement>("#urgent-list", dropX, dropY);
+    const todayHit  = !!closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
     const dayBox = urgentHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
     const dropDateKey = dayBox?.dataset.dayDate ?? null;
 
@@ -366,6 +576,18 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             if (ids.length) {
                 applyDbChange = async () => {
                     await dbm.moveTaskToUrgent(draggedId);
+                    await dbm.setSortOrder(ids);
+                };
+            }
+        }
+    } else if (todayHit) {
+        const box = closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
+        const container = box?.querySelector<HTMLElement>(".day-rows");
+        if (container) {
+            const ids = orderFromDom(container, ".task-row.filled", draggedId);
+            if (ids.length) {
+                applyDbChange = async () => {
+                    await dbm.moveTaskToToday(draggedId);
                     await dbm.setSortOrder(ids);
                 };
             }
@@ -397,15 +619,19 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     drag.ghostEl.remove();
     document.body.classList.remove("dragging");
 
+    previewEl = null;
+    previewKind = null;
+    previewContainer = null;
+    previewIndex = -1;
+    containerSnaps.clear();
+
     try {
         await applyDbChange();
         await refresh();
     } catch (err) {
-        if (drag.sourceEl.isConnected) {
-            drag.sourceEl.classList.remove("drag-source");
-            drag.sourceEl.style.display = "";
-        }
-        clearPreview();
+        activeDrag = drag;
+        clearDragPreview(false);
+        cleanupDragVisuals();
         throw err;
     }
 }
@@ -488,14 +714,16 @@ function byDueDateMap(tasks: Task[]): Map<string, Task[]> {
 async function loadTasksForCurrentView(): Promise<void> {
     const weekKeys = getWeekDateKeys(currentWeekStart);
     const weekStartKey = weekKeys[0];
-    const weekEndKey = weekKeys[6];
+    const weekEndKey   = weekKeys[6];
 
-    weekTasks = await dbm.getWeekTasks(weekStartKey, weekEndKey);
+    weekTasks             = await dbm.getWeekTasks(weekStartKey, weekEndKey);
     urgentNoDeadlineTasks = await dbm.getUrgentTasks();
+    todayTasks            = await dbm.getTodayTasks();
 
     visibleTaskById = new Map<number, Task>();
-    for (const t of weekTasks) visibleTaskById.set(t.id, t);
+    for (const t of weekTasks)             visibleTaskById.set(t.id, t);
     for (const t of urgentNoDeadlineTasks) visibleTaskById.set(t.id, t);
+    for (const t of todayTasks)            visibleTaskById.set(t.id, t);
 }
 
 function renderWeekGrid(): void {
@@ -516,9 +744,8 @@ function renderWeekGrid(): void {
 
         const rows = Array.from({ length: slots }, (_, i) => {
             const task = tasks[i];
-            if (!task) {
-                return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
-            }
+            if (!task) return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
+
             const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
             const title = escapeHtml(task.title);
             const notesPreview = task.notes?.trim()
@@ -536,14 +763,51 @@ function renderWeekGrid(): void {
             `;
         }).join("");
 
-        const isToday = dateKey === todayKey;
-        const isPast  = dateKey < todayKey;
+        const isCurrentDay = dateKey === todayKey;
+        const isPast       = dateKey < todayKey;
 
         return `
-            <div class="day-box ${isToday ? "today" : ""} ${isPast ? "past" : ""}" data-day-date="${dateKey}" title="Click to add task">
+            <div class="day-box ${isCurrentDay ? "current-day" : ""} ${isPast ? "past" : ""}" data-day-date="${dateKey}" title="Click to add task">
                 <div class="day-label-strip">
                     <div class="day-label-rot day-label-week">${DAY_LABELS[weekIndex]}</div>
                     <div class="day-label-rot day-label-date">${escapeHtml(formatMonthDay(dateKey))}</div>
+                </div>
+                <div class="day-rows" style="grid-template-rows: repeat(${slots}, minmax(0, 1fr));">
+                    ${rows}
+                </div>
+            </div>
+        `;
+    };
+
+    const renderTodayBox = (): string => {
+        const tasks = todayTasks;
+        const slots = Math.max(6, tasks.length);
+
+        const rows = Array.from({ length: slots }, (_, i) => {
+            const task = tasks[i];
+            if (!task) return `<div class="task-row empty" data-empty="1"></div>`;
+
+            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
+            const title = escapeHtml(task.title);
+            const notesPreview = task.notes?.trim()
+                ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
+                : "";
+
+            return `
+                <div class="task-row filled" data-task-id="${task.id}" title="Click to edit">
+                    <div class="row-main">
+                        <span class="row-title">${title}</span>
+                        ${notesPreview}
+                    </div>
+                    ${urgentMark}
+                </div>
+            `;
+        }).join("");
+
+        return `
+            <div class="day-box today-box" title="Click to add task">
+                <div class="day-label-strip">
+                    <div class="day-label-rot day-label-today">Today</div>
                 </div>
                 <div class="day-rows" style="grid-template-rows: repeat(${slots}, minmax(0, 1fr));">
                     ${rows}
@@ -559,7 +823,7 @@ function renderWeekGrid(): void {
         `<div class="grid-cell">${renderDayBox(4)}</div>`,
         `<div class="grid-cell">${renderDayBox(2)}</div>`,
         `<div class="grid-cell">${renderDayBox(5)}</div>`,
-        `<div class="grid-cell empty-grid-cell" aria-hidden="true"></div>`,
+        `<div class="grid-cell">${renderTodayBox()}</div>`,
         `<div class="grid-cell">${renderDayBox(6)}</div>`,
     ].join("");
 
@@ -635,11 +899,29 @@ function openModal(state: ModalState): void {
         urgentInput.checked = true;
         deleteBtn.hidden = true;
         saveBtn.textContent = "Create";
+    } else if (state.mode === "create" && state.target === "today") {
+        titleEl.textContent = "Add today task";
+        contextEl.textContent = "Task for Today";
+        titleInput.value = "";
+        notesInput.value = "";
+        urgentField.hidden = false;
+        urgentInput.checked = false;
+        deleteBtn.hidden = true;
+        saveBtn.textContent = "Create";
     } else if (state.mode === "edit" && state.target === "day") {
         titleEl.textContent = "Edit task";
         contextEl.textContent = `Due: ${state.task.due_date
             ? formatLongDate(state.task.due_date)
             : "No due date"}`;
+        titleInput.value = state.task.title ?? "";
+        notesInput.value = state.task.notes ?? "";
+        urgentField.hidden = false;
+        urgentInput.checked = state.task.urgent;
+        deleteBtn.hidden = false;
+        saveBtn.textContent = "Save";
+    } else if (state.mode === "edit" && state.target === "today") {
+        titleEl.textContent = "Edit today task";
+        contextEl.textContent = "Task for Today";
         titleInput.value = state.task.title ?? "";
         notesInput.value = state.task.notes ?? "";
         urgentField.hidden = false;
@@ -688,9 +970,9 @@ async function saveModal(): Promise<void> {
     if (modalState.mode === "create" && modalState.target === "day") {
         await db.execute(
             `
-            INSERT INTO tasks (title, notes, due_date, is_urgent, sort_order)
+            INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
             VALUES (
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, 0,
                 (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date = ?)
             )
             `,
@@ -699,19 +981,30 @@ async function saveModal(): Promise<void> {
     } else if (modalState.mode === "create" && modalState.target === "urgent") {
         await db.execute(
             `
-            INSERT INTO tasks (title, notes, due_date, is_urgent, sort_order)
+            INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
             VALUES (
-                ?, ?, NULL, 1,
+                ?, ?, NULL, 1, 0,
                 (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date IS NULL AND is_urgent = 1)
             )
             `,
             [title, notes]
         );
+    } else if (modalState.mode === "create" && modalState.target === "today") {
+        await db.execute(
+            `
+            INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
+            VALUES (
+                ?, ?, NULL, ?, 1,
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE is_today = 1)
+            )
+            `,
+            [title, notes, urgentInput.checked ? 1 : 0]
+        );
     } else if (modalState.mode === "edit" && modalState.target === "day") {
         await db.execute(
             `
             UPDATE tasks
-            SET title = ?, notes = ?, is_urgent = ?, updated_at = CURRENT_TIMESTAMP
+            SET title = ?, notes = ?, is_urgent = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             `,
             [title, notes, urgentInput.checked ? 1 : 0, modalState.task.id]
@@ -720,10 +1013,20 @@ async function saveModal(): Promise<void> {
         await db.execute(
             `
             UPDATE tasks
-            SET title = ?, notes = ?, due_date = NULL, is_urgent = 1, updated_at = CURRENT_TIMESTAMP
+            SET title = ?, notes = ?, due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             `,
             [title, notes, modalState.task.id]
+        );
+    } else if (modalState.mode === "edit" && modalState.target === "today") {
+        await db.execute(
+            `
+            UPDATE tasks
+            SET title = ?, notes = ?, is_urgent = ?, is_today = 1, due_date = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+                `,
+            [title, notes, urgentInput.checked ? 1 : 0, modalState.task.id]
         );
     }
 
@@ -780,7 +1083,17 @@ function wireEvents(): void {
         if (filledRow) {
             const id = Number(filledRow.dataset.taskId);
             const task = visibleTaskById.get(id);
-            if (task) openModal({ mode: "edit", target: "day", task });
+            if (!task) return;
+
+            if (filledRow.closest(".today-box")) openModal({ mode: "edit", target: "today", task });
+            else openModal({ mode: "edit", target: "day", task });
+
+            return;
+        }
+
+        const todayBox = target.closest<HTMLElement>(".today-box");
+        if (todayBox) {
+            openModal({ mode: "create", target: "today" });
             return;
         }
 
@@ -838,9 +1151,11 @@ function wireEvents(): void {
         const id = Number(row.dataset.taskId);
         if (!Number.isFinite(id) || id <= 0) return;
 
+        const inToday = !!row.closest(".today-box");
+
         pendingDrag = {
             taskId: id,
-            kind: "day",
+            kind: inToday ? "today" : "day",
             startX: e.clientX,
             startY: e.clientY,
             sourceEl: row,
@@ -893,11 +1208,18 @@ function wireEvents(): void {
             return;
         }
 
+        const todayBox = closestAtPoint<HTMLElement>(".today-box", e.clientX, e.clientY);
+        if (todayBox) {
+            setDayHover(todayBox);
+            showTodayPreview(todayBox, e.clientY, dragMovingDown);
+            return;
+        }
+
         const dayBox = closestAtPoint<HTMLElement>(".day-box", e.clientX, e.clientY);
         setDayHover(dayBox);
 
         if (dayBox) showDayPreview(dayBox, e.clientY, dragMovingDown);
-        else clearPreview();
+        else clearDragPreview(true);
     }, { passive: false });
 
     window.addEventListener("pointerup", async (e) => {
