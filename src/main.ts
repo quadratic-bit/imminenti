@@ -313,6 +313,7 @@ function showGridPreview(
     movingDown: boolean
 ): void {
     if (drag.state !== "active") return;
+    const draggedId = drag.taskId;
 
     const container = box.querySelector<HTMLElement>(".day-rows");
     if (!container) return;
@@ -321,16 +322,16 @@ function showGridPreview(
 
     const items = Array
         .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
-        .filter((el) => Number(el.dataset.taskId) !== (drag as any).taskId); // FIXME: lacking type knowledge?
+        .filter((el) => Number(el.dataset.taskId) !== draggedId);
 
     const idx = computeInsertIndex(items, pointerY, container, kind, movingDown);
     if (idx === previewIndex) return;
     previewIndex = idx;
 
-    const base = idsInGrid(container).filter((id) => id !== (drag as any).taskId);  // FIXME: lacking type knowledge?
-    base.splice(Math.max(0, Math.min(idx, base.length)), 0, drag.taskId);
+    const base = idsInGrid(container).filter((id) => id !== draggedId);
+    base.splice(Math.max(0, Math.min(idx, base.length)), 0, draggedId);
 
-    paintGrid(container, base, drag.taskId);
+    paintGrid(container, base, draggedId);
 }
 
 function showOngoingPreview(pointerY: number, movingDown: boolean): void {
