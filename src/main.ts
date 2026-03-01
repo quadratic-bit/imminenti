@@ -341,39 +341,24 @@ function computeInsertIndex(
     return items.length;
 }
 
-function showDayPreview(dayBox: HTMLElement, pointerY: number, movingDown: boolean): void {
+function showGridPreview(
+    kind: "day" | "today",
+    box: HTMLElement,
+    pointerY: number,
+    movingDown: boolean
+): void {
     if (!activeDrag) return;
-    const container = dayBox.querySelector<HTMLElement>(".day-rows");
+
+    const container = box.querySelector<HTMLElement>(".day-rows");
     if (!container) return;
 
-    ensurePreview("day", container);
+    ensurePreview(kind, container);
 
     const items = Array
         .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
         .filter((el) => Number(el.dataset.taskId) !== activeDrag!.taskId);
 
-    const idx = computeInsertIndex(items, pointerY, container, "day", movingDown);
-    if (idx === previewIndex) return;
-    previewIndex = idx;
-
-    const base = idsInGrid(container).filter((id) => id !== activeDrag!.taskId);
-    base.splice(Math.max(0, Math.min(idx, base.length)), 0, activeDrag!.taskId);
-
-    paintGrid(container, base, activeDrag.taskId);
-}
-
-function showTodayPreview(todayBox: HTMLElement, pointerY: number, movingDown: boolean): void {
-    if (!activeDrag) return;
-    const container = todayBox.querySelector<HTMLElement>(".day-rows");
-    if (!container) return;
-
-    ensurePreview("today", container);
-
-    const items = Array
-        .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
-        .filter((el) => Number(el.dataset.taskId) !== activeDrag!.taskId);
-
-    const idx = computeInsertIndex(items, pointerY, container, "today", movingDown);
+    const idx = computeInsertIndex(items, pointerY, container, kind, movingDown);
     if (idx === previewIndex) return;
     previewIndex = idx;
 
@@ -515,13 +500,13 @@ function beginDragFromPending(x: number, y: number): void {
         if (!box) return;
 
         setDayHover(box);
-        showTodayPreview(box, y, true);
+        showGridPreview("today", box, y, true);
     } else {
         const box = activeDrag.sourceEl.closest<HTMLElement>(".day-box");
         if (!box) return;
 
         setDayHover(box);
-        showDayPreview(box, y, true);
+        showGridPreview("day", box, y, true);
     }
 }
 
@@ -1211,14 +1196,14 @@ function wireEvents(): void {
         const todayBox = closestAtPoint<HTMLElement>(".today-box", e.clientX, e.clientY);
         if (todayBox) {
             setDayHover(todayBox);
-            showTodayPreview(todayBox, e.clientY, dragMovingDown);
+            showGridPreview("today", todayBox, e.clientY, dragMovingDown);
             return;
         }
 
         const dayBox = closestAtPoint<HTMLElement>(".day-box", e.clientX, e.clientY);
         setDayHover(dayBox);
 
-        if (dayBox) showDayPreview(dayBox, e.clientY, dragMovingDown);
+        if (dayBox) showGridPreview("day", dayBox, e.clientY, dragMovingDown);
         else clearDragPreview(true);
     }, { passive: false });
 
