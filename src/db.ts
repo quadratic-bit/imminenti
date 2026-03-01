@@ -20,8 +20,8 @@ const toTask = (r: TaskRow): Task => ({
     title: r.title,
     notes: r.notes ?? "",
     due_date: (r.due_date as any) ?? null,
-    urgent: r.is_urgent === 1,
-    today:  r.is_today === 1,
+    ongoing: r.is_urgent === 1,
+    today:   r.is_today === 1,
     sort_order: r.sort_order,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -84,15 +84,15 @@ export class DBManager {
         return weekTasks.map(toTask);
     }
 
-    async getUrgentTasks(): Promise<Task[]> {
+    async getOngoingTasks(): Promise<Task[]> {
         const db = await this.get();
-        const urgentTasks = await db.select<TaskRow[]>(`
+        const ongoingTasks = await db.select<TaskRow[]>(`
             SELECT id, title, notes, due_date, is_urgent, is_today, sort_order, created_at, updated_at
             FROM tasks
             WHERE due_date IS NULL AND is_urgent = 1 AND is_today = 0
             ORDER BY sort_order ASC, id ASC
         `);
-        return urgentTasks.map(toTask);
+        return ongoingTasks.map(toTask);
     }
 
     async getTodayTasks(): Promise<Task[]> {
@@ -120,7 +120,7 @@ export class DBManager {
         }
     }
 
-    async moveTaskToUrgent(taskId: number): Promise<void> {
+    async moveTaskToOngoing(taskId: number): Promise<void> {
         const db = await this.get();
         await db.execute(
             `

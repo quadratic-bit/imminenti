@@ -2,12 +2,12 @@ import "./styles.css";
 import { DBManager } from "./db";
 import { Task, DateKey } from "./task";
 
-type ModalState = { mode: "create"; target: "day";    dateKey: string }
-                | { mode: "create"; target: "urgent"                  }
-                | { mode: "create"; target: "today"                   }
-                | { mode: "edit";   target: "day";    task: Task      }
-                | { mode: "edit";   target: "urgent"; task: Task      }
-                | { mode: "edit";   target: "today";  task: Task      };
+type ModalState = { mode: "create"; target: "day";     dateKey: string }
+                | { mode: "create"; target: "ongoing"                  }
+                | { mode: "create"; target: "today"                    }
+                | { mode: "edit";   target: "day";     task: Task      }
+                | { mode: "edit";   target: "ongoing"; task: Task      }
+                | { mode: "edit";   target: "today";   task: Task      };
 
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -16,13 +16,13 @@ let dbm = new DBManager();
 
 let currentWeekStart = startOfWeek(new Date());
 let weekTasks: Task[] = [];
-let urgentNoDeadlineTasks: Task[] = [];
+let ongoingTasks: Task[] = [];
 let visibleTaskById = new Map<number, Task>();
 let todayTasks: Task[] = [];
 
 let modalState: ModalState | null = null;
 
-type DragKind = "day" | "urgent" | "today";
+type DragKind = "day" | "ongoing" | "today";
 
 type PendingDrag = {
     taskId:   number;
@@ -78,14 +78,14 @@ function setDayHover(dayBox: HTMLElement | null): void {
     if (hoveredDayBox) hoveredDayBox.classList.add("drop-hover");
 }
 
-function setUrgentHover(on: boolean): void {
-    const list = document.querySelector<HTMLElement>("#urgent-list");
+function setOngoingHover(on: boolean): void {
+    const list = document.querySelector<HTMLElement>("#ongoing-list");
     if (!list) return;
-    list.classList.toggle("drop-hover-urgent", on);
+    list.classList.toggle("drop-hover-ongoing", on);
 }
 
-function setUrgentPreviewing(on: boolean): void {
-    const list = document.querySelector<HTMLElement>("#urgent-list");
+function setOngoingPreviewing(on: boolean): void {
+    const list = document.querySelector<HTMLElement>("#ongoing-list");
     if (!list) return;
     list.classList.toggle("previewing", on);
 }
@@ -150,7 +150,7 @@ function restoreAllContainers(): void {
 function applyDragSourceVisual(): void {
     if (!activeDrag) return;
 
-    if (activeDrag.kind === "urgent") {
+    if (activeDrag.kind === "ongoing") {
         activeDrag.sourceEl.classList.add("drag-source");
         activeDrag.sourceEl.style.display = "none";
         return;
@@ -161,14 +161,14 @@ function applyDragSourceVisual(): void {
 }
 
 function clearDragPreview(keepSourceHole: boolean): void {
-    if (previewKind === "urgent") previewEl?.remove();
+    if (previewKind === "ongoing") previewEl?.remove();
 
     previewEl = null;
     previewKind = null;
     previewContainer = null;
     previewIndex = -1;
 
-    setUrgentPreviewing(false);
+    setOngoingPreviewing(false);
 
     restoreAllContainers();
 
@@ -187,7 +187,7 @@ function setRowFilled(el: HTMLElement, task: Task, asPreview: boolean): void {
     el.dataset.taskId = String(task.id);
     el.title = "Click to edit";
 
-    const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
+    const urgentMark = task.ongoing ? `<span class="urgent-pill">urgent</span>` : "";
     const title = escapeHtml(task.title);
     const notesPreview = task.notes?.trim()
         ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
@@ -240,25 +240,25 @@ function clearPreview(): void {
     previewContainer = null;
     previewIndex     = -1;
 
-    setUrgentPreviewing(false);
+    setOngoingPreviewing(false);
 }
 
 function buildPreview(kind: DragKind, taskId: number): HTMLElement {
     const task = visibleTaskById.get(taskId);
 
-    if (kind === "urgent") {
+    if (kind === "ongoing") {
         const el = document.createElement("button");
         el.type = "button";
-        el.className = "urgent-item drag-preview";
+        el.className = "ongoing-item drag-preview";
         el.dataset.taskId = String(taskId);
 
         const title = escapeHtml(task?.title ?? `#${taskId}`);
         const notes = task?.notes?.trim()
-            ? `<div class="urgent-notes">${escapeHtml(task.notes.trim())}</div>`
+            ? `<div class="ongoing-notes">${escapeHtml(task.notes.trim())}</div>`
             : "";
 
         el.innerHTML = `
-            <div class="urgent-item-title">${title}</div>
+            <div class="ongoing-item-title">${title}</div>
             ${notes}
         `;
         return el;
@@ -272,7 +272,7 @@ function buildPreview(kind: DragKind, taskId: number): HTMLElement {
     const notes = task?.notes?.trim()
         ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
         : "";
-    const urgentMark = task?.urgent
+    const urgentMark = task?.ongoing
         ? `<span class="urgent-pill">urgent</span>`
         : "";
 
@@ -297,10 +297,10 @@ function ensurePreview(kind: DragKind, container: HTMLElement): void {
     previewContainer = container;
     previewIndex = -1;
 
-    if (kind === "urgent") {
-        setUrgentPreviewing(true);
+    if (kind === "ongoing") {
+        setOngoingPreviewing(true);
         if (!previewEl) {
-            previewEl = buildPreview("urgent", activeDrag.taskId);
+            previewEl = buildPreview("ongoing", activeDrag.taskId);
             container.appendChild(previewEl);
         }
         return;
@@ -383,19 +383,19 @@ function showTodayPreview(todayBox: HTMLElement, pointerY: number, movingDown: b
     paintGrid(container, base, activeDrag.taskId);
 }
 
-function showUrgentPreview(pointerY: number, movingDown: boolean): void {
+function showOngoingPreview(pointerY: number, movingDown: boolean): void {
     if (!activeDrag) return;
-    const container = document.querySelector<HTMLElement>("#urgent-list");
+    const container = document.querySelector<HTMLElement>("#ongoing-list");
     if (!container) return;
 
-    ensurePreview("urgent", container);
+    ensurePreview("ongoing", container);
 
     const items = Array
-        .from(container.querySelectorAll<HTMLElement>(".urgent-item"))
+        .from(container.querySelectorAll<HTMLElement>(".ongoing-item"))
         .filter((el) => !el.classList.contains("drag-preview"))
         .filter((el) => !el.classList.contains("drag-source"));
 
-    const idx = computeInsertIndex(items, pointerY, container, "urgent", movingDown);
+    const idx = computeInsertIndex(items, pointerY, container, "ongoing", movingDown);
     if (idx === previewIndex) return;
     previewIndex = idx;
 
@@ -471,9 +471,9 @@ function beginDragFromPending(x: number, y: number): void {
             startIndex = filled.indexOf(pendingDrag.sourceEl);
         }
     } else {
-        startContainer = document.querySelector<HTMLElement>("#urgent-list");
+        startContainer = document.querySelector<HTMLElement>("#ongoing-list");
         if (startContainer) {
-            const items = Array.from(startContainer.querySelectorAll<HTMLElement>(".urgent-item"));
+            const items = Array.from(startContainer.querySelectorAll<HTMLElement>(".ongoing-item"));
             startIndex = items.indexOf(pendingDrag.sourceEl);
         }
     }
@@ -481,7 +481,7 @@ function beginDragFromPending(x: number, y: number): void {
 
     pendingDrag.sourceEl.classList.add("drag-source");
 
-    if (pendingDrag.kind === "urgent") {
+    if (pendingDrag.kind === "ongoing") {
         pendingDrag.sourceEl.style.display = "none";
     } else {
         setRowEmpty(pendingDrag.sourceEl);
@@ -506,9 +506,9 @@ function beginDragFromPending(x: number, y: number): void {
     pendingDrag = null;
     justDragged = true;
 
-    if (activeDrag.kind === "urgent") {
-        setUrgentHover(true);
-        showUrgentPreview(y, true);
+    if (activeDrag.kind === "ongoing") {
+        setOngoingHover(true);
+        showOngoingPreview(y, true);
     } else if (activeDrag.kind === "today") {
         const box = closestAtPoint<HTMLElement>(".today-box", x, y)
             ?? activeDrag.sourceEl.closest<HTMLElement>(".today-box");
@@ -541,14 +541,14 @@ function cleanupDragVisuals(): void {
 
     previewEl?.remove();
     previewEl = null;
-    setUrgentPreviewing(false);
+    setOngoingPreviewing(false);
 
     previewKind = null;
     previewContainer = null;
     previewIndex = -1;
 
     setDayHover(null);
-    setUrgentHover(false);
+    setOngoingHover(false);
     document.body.classList.remove("dragging");
 }
 
@@ -562,20 +562,20 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     const drag = activeDrag;
     const draggedId = drag.taskId;
 
-    const urgentHit = !!closestAtPoint<HTMLElement>("#urgent-list", dropX, dropY);
+    const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", dropX, dropY);
     const todayHit  = !!closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
-    const dayBox = urgentHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
+    const dayBox = ongoingHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
     const dropDateKey = dayBox?.dataset.dayDate ?? null;
 
     let applyDbChange: (() => Promise<void>) | null = null;
 
-    if (urgentHit) {
-        const list = document.querySelector<HTMLElement>("#urgent-list");
+    if (ongoingHit) {
+        const list = document.querySelector<HTMLElement>("#ongoing-list");
         if (list) {
-            const ids = orderFromDom(list, ".urgent-item", draggedId);
+            const ids = orderFromDom(list, ".ongoing-item", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTaskToUrgent(draggedId);
+                    await dbm.moveTaskToOngoing(draggedId);
                     await dbm.setSortOrder(ids);
                 };
             }
@@ -614,7 +614,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     activeDrag  = null;
 
     setDayHover   (null);
-    setUrgentHover(false);
+    setOngoingHover(false);
 
     drag.ghostEl.remove();
     document.body.classList.remove("dragging");
@@ -716,13 +716,13 @@ async function loadTasksForCurrentView(): Promise<void> {
     const weekStartKey = weekKeys[0];
     const weekEndKey   = weekKeys[6];
 
-    weekTasks             = await dbm.getWeekTasks(weekStartKey, weekEndKey);
-    urgentNoDeadlineTasks = await dbm.getUrgentTasks();
-    todayTasks            = await dbm.getTodayTasks();
+    weekTasks    = await dbm.getWeekTasks(weekStartKey, weekEndKey);
+    ongoingTasks = await dbm.getOngoingTasks();
+    todayTasks   = await dbm.getTodayTasks();
 
     visibleTaskById = new Map<number, Task>();
     for (const t of weekTasks)             visibleTaskById.set(t.id, t);
-    for (const t of urgentNoDeadlineTasks) visibleTaskById.set(t.id, t);
+    for (const t of ongoingTasks) visibleTaskById.set(t.id, t);
     for (const t of todayTasks)            visibleTaskById.set(t.id, t);
 }
 
@@ -746,7 +746,7 @@ function renderWeekGrid(): void {
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
 
-            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
+            const urgentMark = task.ongoing ? `<span class="urgent-pill">urgent</span>` : "";
             const title = escapeHtml(task.title);
             const notesPreview = task.notes?.trim()
                 ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
@@ -787,7 +787,7 @@ function renderWeekGrid(): void {
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-empty="1"></div>`;
 
-            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
+            const urgentMark = task.ongoing ? `<span class="urgent-pill">urgent</span>` : "";
             const title = escapeHtml(task.title);
             const notesPreview = task.notes?.trim()
                 ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
@@ -834,23 +834,23 @@ function renderWeekGrid(): void {
     `;
 }
 
-function renderUrgentList(): void {
-    const list = document.querySelector<HTMLDivElement>("#urgent-list");
+function renderOngoingList(): void {
+    const list = document.querySelector<HTMLDivElement>("#ongoing-list");
     if (!list) return;
 
-    if (urgentNoDeadlineTasks.length === 0) {
-        list.innerHTML = `<div class="empty-urgent">No urgent tasks without a concrete deadline.</div>`;
+    if (ongoingTasks.length === 0) {
+        list.innerHTML = `<div class="empty-ongoing">No ongoing tasks.</div>`;
         return;
     }
 
-    list.innerHTML = urgentNoDeadlineTasks.map((t) => {
+    list.innerHTML = ongoingTasks.map((t) => {
         const title = escapeHtml(t.title);
         const notes = t.notes?.trim()
-            ? `<div class="urgent-notes">${escapeHtml(t.notes.trim())}</div>`
+            ? `<div class="ongoing-notes">${escapeHtml(t.notes.trim())}</div>`
             : "";
         return `
-            <button type="button" class="urgent-item" data-task-id="${t.id}" title="Click to edit">
-                <div class="urgent-item-title">${title}</div>
+            <button type="button" class="ongoing-item" data-task-id="${t.id}" title="Click to edit">
+                <div class="ongoing-item-title">${title}</div>
                 ${notes}
             </button>
         `;
@@ -859,7 +859,7 @@ function renderUrgentList(): void {
 
 function renderAll(): void {
     renderWeekGrid();
-    renderUrgentList();
+    renderOngoingList();
 }
 
 function qs<T extends Element>(selector: string): T {
@@ -871,15 +871,15 @@ function qs<T extends Element>(selector: string): T {
 function openModal(state: ModalState): void {
     modalState = state;
 
-    const dialog      = qs<HTMLDialogElement>  ("#task-dialog");
-    const titleEl     = qs<HTMLHeadingElement> ("#dialog-title");
-    const contextEl   = qs<HTMLDivElement>     ("#dialog-context");
-    const titleInput  = qs<HTMLInputElement>   ("#task-title-input");
-    const notesInput  = qs<HTMLTextAreaElement>("#task-notes-input");
-    const urgentField = qs<HTMLLabelElement>   ("#task-urgent-field");
-    const urgentInput = qs<HTMLInputElement>   ("#task-urgent-input");
-    const deleteBtn   = qs<HTMLButtonElement>  ("#delete-task-btn");
-    const saveBtn     = qs<HTMLButtonElement>  ("#save-task-btn");
+    const dialog       = qs<HTMLDialogElement>  ("#task-dialog");
+    const titleEl      = qs<HTMLHeadingElement> ("#dialog-title");
+    const contextEl    = qs<HTMLDivElement>     ("#dialog-context");
+    const titleInput   = qs<HTMLInputElement>   ("#task-title-input");
+    const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input");
+    const urgentField  = qs<HTMLLabelElement>   ("#task-urgent-field");
+    const urgentInput  = qs<HTMLInputElement>   ("#task-urgent-input");
+    const deleteBtn    = qs<HTMLButtonElement>  ("#delete-task-btn");
+    const saveBtn      = qs<HTMLButtonElement>  ("#save-task-btn");
 
     if (state.mode === "create" && state.target === "day") {
         titleEl.textContent = "Add task";
@@ -890,9 +890,9 @@ function openModal(state: ModalState): void {
         urgentInput.checked = false;
         deleteBtn.hidden = true;
         saveBtn.textContent = "Create";
-    } else if (state.mode === "create" && state.target === "urgent") {
-        titleEl.textContent = "Add urgent task";
-        contextEl.textContent = "Urgent task without a concrete deadline";
+    } else if (state.mode === "create" && state.target === "ongoing") {
+        titleEl.textContent = "Add ongoing task";
+        contextEl.textContent = "Ongoing task";
         titleInput.value = "";
         notesInput.value = "";
         urgentField.hidden = true;
@@ -916,7 +916,7 @@ function openModal(state: ModalState): void {
         titleInput.value = state.task.title ?? "";
         notesInput.value = state.task.notes ?? "";
         urgentField.hidden = false;
-        urgentInput.checked = state.task.urgent;
+        urgentInput.checked = state.task.ongoing;
         deleteBtn.hidden = false;
         saveBtn.textContent = "Save";
     } else if (state.mode === "edit" && state.target === "today") {
@@ -925,12 +925,12 @@ function openModal(state: ModalState): void {
         titleInput.value = state.task.title ?? "";
         notesInput.value = state.task.notes ?? "";
         urgentField.hidden = false;
-        urgentInput.checked = state.task.urgent;
+        urgentInput.checked = state.task.ongoing;
         deleteBtn.hidden = false;
         saveBtn.textContent = "Save";
     } else {
-        titleEl.textContent = "Edit urgent task";
-        contextEl.textContent = "Urgent task without a concrete deadline";
+        titleEl.textContent = "Edit ongoing task";
+        contextEl.textContent = "Ongoing task";
         titleInput.value = state.task.title ?? "";
         notesInput.value = state.task.notes ?? "";
         urgentField.hidden = true;
@@ -953,9 +953,9 @@ function closeModal(): void {
 async function saveModal(): Promise<void> {
     if (!modalState) return;
 
-    const titleInput  = qs<HTMLInputElement>("#task-title-input");
-    const notesInput  = qs<HTMLTextAreaElement>("#task-notes-input");
-    const urgentInput = qs<HTMLInputElement>("#task-urgent-input");
+    const titleInput   = qs<HTMLInputElement>("#task-title-input");
+    const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input");
+    const ongoingInput = qs<HTMLInputElement>("#task-urgent-input");
 
     const title = titleInput.value.trim();
     const notes = notesInput.value.trim();
@@ -976,9 +976,9 @@ async function saveModal(): Promise<void> {
                 (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date = ?)
             )
             `,
-            [title, notes, modalState.dateKey, urgentInput.checked ? 1 : 0, modalState.dateKey]
+            [title, notes, modalState.dateKey, ongoingInput.checked ? 1 : 0, modalState.dateKey]
         );
-    } else if (modalState.mode === "create" && modalState.target === "urgent") {
+    } else if (modalState.mode === "create" && modalState.target === "ongoing") {
         await db.execute(
             `
             INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
@@ -998,7 +998,7 @@ async function saveModal(): Promise<void> {
                 (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE is_today = 1)
             )
             `,
-            [title, notes, urgentInput.checked ? 1 : 0]
+            [title, notes, ongoingInput.checked ? 1 : 0]
         );
     } else if (modalState.mode === "edit" && modalState.target === "day") {
         await db.execute(
@@ -1007,9 +1007,9 @@ async function saveModal(): Promise<void> {
             SET title = ?, notes = ?, is_urgent = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             `,
-            [title, notes, urgentInput.checked ? 1 : 0, modalState.task.id]
+            [title, notes, ongoingInput.checked ? 1 : 0, modalState.task.id]
         );
-    } else if (modalState.mode === "edit" && modalState.target === "urgent") {
+    } else if (modalState.mode === "edit" && modalState.target === "ongoing") {
         await db.execute(
             `
             UPDATE tasks
@@ -1026,7 +1026,7 @@ async function saveModal(): Promise<void> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
                 `,
-            [title, notes, urgentInput.checked ? 1 : 0, modalState.task.id]
+            [title, notes, ongoingInput.checked ? 1 : 0, modalState.task.id]
         );
     }
 
@@ -1045,14 +1045,14 @@ async function refresh(): Promise<void> {
     await loadTasksForCurrentView()
     .then(() => {
         setDayHover(null);
-        setUrgentHover(false);
+        setOngoingHover(false);
         clearPreview();
         renderAll();
     })
     .catch(err => {
         console.error(err);
         const grid = document.querySelector<HTMLDivElement>("#week-grid");
-        const list = document.querySelector<HTMLDivElement>("#urgent-list");
+        const list = document.querySelector<HTMLDivElement>("#ongoing-list");
         if (grid) grid.innerHTML = `<div class="error-box">Failed to load data.</div>`;
         if (list) list.innerHTML = `<div class="error-box">Failed to load data.</div>`;
     });
@@ -1104,22 +1104,22 @@ function wireEvents(): void {
         }
     });
 
-    qs<HTMLButtonElement>("#add-urgent-btn").addEventListener("click", () => {
-        openModal({ mode: "create", target: "urgent" });
+    qs<HTMLButtonElement>("#add-ongoing-btn").addEventListener("click", () => {
+        openModal({ mode: "create", target: "ongoing" });
     });
 
-    qs<HTMLDivElement>("#urgent-list").addEventListener("click", (e) => {
+    qs<HTMLDivElement>("#ongoing-list").addEventListener("click", (e) => {
         if (justDragged) {
             justDragged = false;
             return;
         }
 
         const target = e.target as HTMLElement;
-        const item = target.closest<HTMLElement>(".urgent-item");
+        const item = target.closest<HTMLElement>(".ongoing-item");
         if (!item) return;
         const id = Number(item.dataset.taskId);
         const task = visibleTaskById.get(id);
-        if (task) openModal({ mode: "edit", target: "urgent", task });
+        if (task) openModal({ mode: "edit", target: "ongoing", task });
     });
 
     qs<HTMLButtonElement>("#cancel-task-btn").addEventListener("click", () => closeModal());
@@ -1162,10 +1162,10 @@ function wireEvents(): void {
         };
     }, { capture: true });
 
-    qs<HTMLDivElement>("#urgent-list").addEventListener("pointerdown", (e) => {
+    qs<HTMLDivElement>("#ongoing-list").addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
         const target = e.target as HTMLElement;
-        const item = target.closest<HTMLElement>(".urgent-item");
+        const item = target.closest<HTMLElement>(".ongoing-item");
         if (!item) return;
 
         const id = Number(item.dataset.taskId);
@@ -1173,7 +1173,7 @@ function wireEvents(): void {
 
         pendingDrag = {
             taskId: id,
-            kind: "urgent",
+            kind: "ongoing",
             startX: e.clientX,
             startY: e.clientY,
             sourceEl: item,
@@ -1199,12 +1199,12 @@ function wireEvents(): void {
         if (e.clientY !== dragLastY) dragMovingDown = e.clientY > dragLastY;
         dragLastY = e.clientY;
 
-        const urgentHit = !!closestAtPoint<HTMLElement>("#urgent-list", e.clientX, e.clientY);
-        setUrgentHover(urgentHit);
+        const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", e.clientX, e.clientY);
+        setOngoingHover(ongoingHit);
 
-        if (urgentHit) {
+        if (ongoingHit) {
             setDayHover(null);
-            showUrgentPreview(e.clientY, dragMovingDown);
+            showOngoingPreview(e.clientY, dragMovingDown);
             return;
         }
 
@@ -1271,9 +1271,9 @@ async function bootstrap(): Promise<void> {
     wireEvents();
 
     const weekGrid   = document.querySelector<HTMLDivElement>("#week-grid");
-    const urgentList = document.querySelector<HTMLDivElement>("#urgent-list");
-    if (weekGrid)   weekGrid  .innerHTML = `<div class="loading-box">Loading…</div>`;
-    if (urgentList) urgentList.innerHTML = `<div class="loading-box">Loading…</div>`;
+    const ongoingList = document.querySelector<HTMLDivElement>("#ongoing-list");
+    if (weekGrid)    weekGrid   .innerHTML = `<div class="loading-box">Loading…</div>`;
+    if (ongoingList) ongoingList.innerHTML = `<div class="loading-box">Loading…</div>`;
 
     await refresh();
 }
