@@ -106,6 +106,26 @@ function setOngoingPreviewing(on: boolean): void {
     list.classList.toggle("previewing", on);
 }
 
+type ResetPreviewOpts = {
+    keepSourceHole: boolean;
+    removePreviewEl: boolean;
+};
+
+function resetPreview(opts: ResetPreviewOpts): void {
+    if (opts.removePreviewEl) previewEl?.remove();
+
+    previewEl = null;
+    previewKind = null;
+    previewContainer = null;
+    previewIndex = -1;
+
+    setOngoingPreviewing(false);
+
+    repaintBaseOrders(opts.keepSourceHole);
+
+    if (opts.keepSourceHole) applyDragSourceVisual();
+}
+
 function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
     ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
 }
@@ -121,21 +141,6 @@ function applyDragSourceVisual(): void {
 
     activeDrag.sourceEl.classList.add("drag-source");
     setRowEmpty(activeDrag.sourceEl);
-}
-
-function clearDragPreview(keepSourceHole: boolean): void {
-    if (previewKind === "ongoing") previewEl?.remove();
-
-    previewEl = null;
-    previewKind = null;
-    previewContainer = null;
-    previewIndex = -1;
-
-    setOngoingPreviewing(false);
-
-    repaintBaseOrders(keepSourceHole);
-
-    if (keepSourceHole) applyDragSourceVisual();
 }
 
 function setRowEmpty(el: HTMLElement): void {
@@ -202,16 +207,6 @@ function indexOfFilledRow(container: HTMLElement, rowEl: HTMLElement): number {
     return idx < 0 ? 0 : idx;
 }
 
-function clearPreview(): void {
-    previewEl?.remove();
-    previewEl        = null;
-    previewKind      = null;
-    previewContainer = null;
-    previewIndex     = -1;
-
-    setOngoingPreviewing(false);
-}
-
 function buildPreview(kind: DragKind, taskId: number): HTMLElement {
     const task = visibleTaskById.get(taskId);
 
@@ -259,7 +254,7 @@ function ensurePreview(kind: DragKind, container: HTMLElement): void {
     if (!activeDrag) return;
 
     if (previewKind !== kind || previewContainer !== container) {
-        clearDragPreview(true);
+        resetPreview({ keepSourceHole: true, removePreviewEl: true });
     }
 
     previewKind = kind;
@@ -455,19 +450,13 @@ function cleanupDragVisuals(): void {
 
     baseIdsByContainer.clear();
 
-    previewEl?.remove();
-    previewEl = null;
-    previewKind = null;
-    previewContainer = null;
-    previewIndex = -1;
-    setOngoingPreviewing(false);
-
     setDayHover(null);
     setOngoingHover(false);
     document.body.classList.remove("dragging");
 
     if (drag) drag.ghostEl.remove();
 
+    resetPreview({ keepSourceHole: false, removePreviewEl: true });
     renderAll();
 }
 
@@ -549,7 +538,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
         await refresh();
     } catch (err) {
         activeDrag = drag;
-        clearDragPreview(false);
+        resetPreview({ keepSourceHole: false, removePreviewEl: true });
         cleanupDragVisuals();
         throw err;
     }
@@ -965,7 +954,7 @@ async function refresh(): Promise<void> {
     .then(() => {
         setDayHover(null);
         setOngoingHover(false);
-        clearPreview();
+        resetPreview({ keepSourceHole: false, removePreviewEl: true });
         renderAll();
     })
     .catch(err => {
@@ -1138,7 +1127,7 @@ function wireEvents(): void {
         setDayHover(dayBox);
 
         if (dayBox) showGridPreview("day", dayBox, e.clientY, dragMovingDown);
-        else clearDragPreview(true);
+        else resetPreview({ keepSourceHole: true, removePreviewEl: true });
     }, { passive: false });
 
     window.addEventListener("pointerup", async (e) => {
