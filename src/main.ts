@@ -14,6 +14,7 @@ let weekTasks: Task[] = [];
 let ongoingTasks: Task[] = [];
 let visibleTaskById = new Map<number, Task>();
 let todayTasks: Task[] = [];
+let suppressNextClick = false;
 
 let modalState: ModalState | null = null;
 
@@ -121,6 +122,13 @@ function resetPreview(opts: ResetPreviewOpts): void {
 
 function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
     ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
+}
+
+function swallowSuppressedClick(e: MouseEvent): void {
+    if (!suppressNextClick) return;
+    suppressNextClick = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
 }
 
 function applyDragSourceVisual(): void {
@@ -400,11 +408,6 @@ function beginDragFromPending(x: number, y: number): void {
         setRowEmpty(drag.sourceEl);
     }
 
-    drag.sourceEl.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-    }, { capture: true, once: true });
-
     document.body.classList.add("dragging");
 
     drag = {
@@ -442,11 +445,11 @@ function beginDragFromPending(x: number, y: number): void {
 }
 
 function cleanupDragVisuals(): void {
-    const ghost = drag.state === "active" ? drag.ghostEl : null;
-    try { if (drag.state === "active") drag.sourceEl.releasePointerCapture(drag.pointerId); } catch {}
-    drag = { state: "idle" }
+    const prev = drag;
+    const ghost = prev.state === "active" ? prev.ghostEl : null;
+    suppressNextClick = false;
 
-    baseIdsByContainer.clear();
+    drag = { state: "idle" };
 
     setDayHover(null);
     setOngoingHover(false);
@@ -472,8 +475,6 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     const todayHit   = !!closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
     const dayBox = ongoingHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
     const dropDateKey = dayBox?.dataset.dayDate ?? null;
-
-    try { drag.sourceEl.releasePointerCapture(drag.pointerId); } catch {}
 
     let applyDbChange: (() => Promise<void>) | null = null;
 
@@ -965,7 +966,9 @@ function wireEvents(): void {
         await refresh();
     });
 
-    qs<HTMLDivElement>("#week-grid").addEventListener("click", (e) => {
+    const weekGridEl = qs<HTMLDivElement>("#week-grid");
+    weekGridEl.addEventListener("click", swallowSuppressedClick, { capture: true });
+    weekGridEl.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
 
         const filledRow = target.closest<HTMLElement>(".task-row.filled");
@@ -994,7 +997,9 @@ function wireEvents(): void {
         openModal({ mode: "create", location: { kind: "ongoing" } });
     });
 
-    qs<HTMLDivElement>("#ongoing-list").addEventListener("click", (e) => {
+    const ongoingListEl = qs<HTMLDivElement>("#ongoing-list");
+    ongoingListEl.addEventListener("click", swallowSuppressedClick, { capture: true });
+    ongoingListEl.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
         const item = target.closest<HTMLElement>(".ongoing-item");
         if (!item) return;
@@ -1115,6 +1120,9 @@ function wireEvents(): void {
         if (e.pointerId !== drag.pointerId) return;
 
         if (drag.state === "active") {
+            suppressNextClick = true;
+            setTimeout(() => { suppressNextClick = false; }, 0);
+
             try {
                 await finishDrag(e.clientX, e.clientY);
             } catch (err) {
@@ -1129,6 +1137,7 @@ function wireEvents(): void {
     window.addEventListener("pointercancel", (e) => {
         if (drag.state === "idle") return;
         if (e.pointerId !== drag.pointerId) return;
+        suppressNextClick = false;
         cancelDrag();
         drag = { state: "idle" };
     });
