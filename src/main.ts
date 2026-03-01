@@ -32,14 +32,6 @@ type PendingDrag = {
     sourceEl: HTMLElement;
 };
 
-type SourceElSnap = {
-    className: string;
-    innerHTML: string;
-    taskId?:   string;
-    title:     string;
-    display:   string;
-};
-
 type ActiveDrag = {
     taskId:   number;
     kind:     DragKind;
@@ -50,8 +42,6 @@ type ActiveDrag = {
     startKind:      DragKind;
     startContainer: HTMLElement | null;
     startIndex:     number;
-
-    sourceSnap: SourceElSnap;
 };
 
 let pendingDrag: PendingDrag | null = null;
@@ -66,6 +56,32 @@ let previewEl:        HTMLElement | null = null;
 let previewKind:      DragKind    | null = null;
 let previewContainer: HTMLElement | null = null;
 let previewIndex = -1;
+
+const baseIdsByContainer = new Map<HTMLElement, number[]>();
+
+function rememberBaseOrder(container: HTMLElement, draggedId: number): void {
+    if (baseIdsByContainer.has(container)) return;
+    baseIdsByContainer.set(container, idsInGrid(container).filter((id) => id !== draggedId));
+}
+
+function repaintBaseOrders(keepSourceHole: boolean): void {
+    for (const [container, base] of baseIdsByContainer) {
+        let ids = base;
+
+        if (
+            keepSourceHole &&
+            activeDrag &&
+            activeDrag.startKind !== "ongoing" &&
+            activeDrag.startContainer === container
+        ) {
+            ids = base.slice();
+            ids.splice(activeDrag.startIndex, 0, -1); // sentinel => empty row
+        }
+
+        paintGrid(container, ids, null);
+    }
+    baseIdsByContainer.clear();
+}
 
 function closestAtPoint<T extends Element>(selector: string, x: number, y: number): T | null {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
@@ -94,59 +110,6 @@ function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
     ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
 }
 
-type RowSnap = {
-    el: HTMLElement;
-    className: string;
-    innerHTML: string;
-    taskId?: string;
-    title?: string;
-};
-
-type ContainerSnap = {
-    origCount: number;
-    rows: RowSnap[];
-};
-
-const containerSnaps = new Map<HTMLElement, ContainerSnap>();
-
-function snapContainer(container: HTMLElement): void {
-    if (containerSnaps.has(container)) return;
-
-    const rows = Array.from(container.querySelectorAll<HTMLElement>(".task-row"));
-    containerSnaps.set(container, {
-        origCount: rows.length,
-        rows: rows.map((el) => ({
-            el,
-            className: el.className,
-            innerHTML: el.innerHTML,
-            taskId: el.dataset.taskId,
-            title: el.title,
-        })),
-    });
-}
-
-function restoreContainer(container: HTMLElement): void {
-    const snap = containerSnaps.get(container);
-    if (!snap) return;
-
-    for (const r of snap.rows) {
-        r.el.className = r.className;
-        r.el.innerHTML = r.innerHTML;
-        if (r.taskId !== undefined) r.el.dataset.taskId = r.taskId;
-        else delete r.el.dataset.taskId;
-        r.el.title = r.title ?? "";
-    }
-
-    const rowsNow = Array.from(container.querySelectorAll<HTMLElement>(".task-row"));
-    for (let i = rowsNow.length - 1; i >= snap.origCount; i--) rowsNow[i].remove();
-
-    containerSnaps.delete(container);
-}
-
-function restoreAllContainers(): void {
-    for (const c of Array.from(containerSnaps.keys())) restoreContainer(c);
-}
-
 function applyDragSourceVisual(): void {
     if (!activeDrag) return;
 
@@ -170,7 +133,7 @@ function clearDragPreview(keepSourceHole: boolean): void {
 
     setOngoingPreviewing(false);
 
-    restoreAllContainers();
+    repaintBaseOrders(keepSourceHole);
 
     if (keepSourceHole) applyDragSourceVisual();
 }
@@ -312,7 +275,7 @@ function ensurePreview(kind: DragKind, container: HTMLElement): void {
         return;
     }
 
-    snapContainer(container);
+    rememberBaseOrder(container, activeDrag.taskId);
 }
 
 function computeInsertIndex(
@@ -411,29 +374,8 @@ function orderFromDom(container: HTMLElement, selector: string, draggedId: numbe
     return ids;
 }
 
-function snapSourceEl(el: HTMLElement): SourceElSnap {
-    return {
-        className: el.className,
-        innerHTML: el.innerHTML,
-        taskId: el.dataset.taskId,
-        title: el.title,
-        display: el.style.display,
-    };
-}
-
-function restoreSourceEl(el: HTMLElement, s: SourceElSnap): void {
-    el.className = s.className;
-    el.innerHTML = s.innerHTML;
-    if (s.taskId !== undefined) el.dataset.taskId = s.taskId;
-    else delete el.dataset.taskId;
-    el.title = s.title;
-    el.style.display = s.display;
-}
-
 function beginDragFromPending(x: number, y: number): void {
     if (!pendingDrag) return;
-
-    const sourceSnap = snapSourceEl(pendingDrag.sourceEl);
 
     const task  = visibleTaskById.get(pendingDrag.taskId);
     const title = task?.title ?? `#${pendingDrag.taskId}`;
@@ -480,7 +422,6 @@ function beginDragFromPending(x: number, y: number): void {
         startKind: pendingDrag.kind,
         startContainer,
         startIndex,
-        sourceSnap,
     };
     dragLastY = y;
     dragMovingDown = true;
@@ -508,30 +449,26 @@ function beginDragFromPending(x: number, y: number): void {
 }
 
 function cleanupDragVisuals(): void {
-    const drag = activeDrag;
-
     pendingDrag = null;
-    activeDrag  = null;
+    const drag = activeDrag;
+    activeDrag = null;
 
-    restoreAllContainers();
-
-    if (drag) {
-        restoreSourceEl(drag.sourceEl, drag.sourceSnap);
-        drag.sourceEl.classList.remove("drag-source");
-        drag.ghostEl.remove();
-    }
+    baseIdsByContainer.clear();
 
     previewEl?.remove();
     previewEl = null;
-    setOngoingPreviewing(false);
-
     previewKind = null;
     previewContainer = null;
     previewIndex = -1;
+    setOngoingPreviewing(false);
 
     setDayHover(null);
     setOngoingHover(false);
     document.body.classList.remove("dragging");
+
+    if (drag) drag.ghostEl.remove();
+
+    renderAll();
 }
 
 function cancelDrag(): void {
@@ -605,7 +542,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     previewKind = null;
     previewContainer = null;
     previewIndex = -1;
-    containerSnaps.clear();
+    baseIdsByContainer.clear();
 
     try {
         await applyDbChange();
