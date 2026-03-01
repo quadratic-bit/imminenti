@@ -54,7 +54,10 @@ export class DBManager {
                 is_urgent  INTEGER NOT NULL DEFAULT 0 CHECK (is_urgent IN (0,1)),
                 is_today   INTEGER NOT NULL DEFAULT 0 CHECK (is_today  IN (0,1)),
                 created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+                CHECK (is_today = 0 OR due_date IS NULL),
+                CHECK (NOT (due_date IS NULL AND is_today = 0 AND is_urgent = 0))
             )
         `);
 
