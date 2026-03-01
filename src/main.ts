@@ -476,7 +476,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(list, ".ongoing-item", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTaskToOngoing(draggedId);
+                    await dbm.moveTask(draggedId, { kind: "ongoing" });
                     await dbm.setSortOrder(ids);
                 };
             }
@@ -488,7 +488,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(container, ".task-row.filled", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTaskToToday(draggedId);
+                    await dbm.moveTask(draggedId, { kind: "today" });
                     await dbm.setSortOrder(ids);
                 };
             }
@@ -499,7 +499,7 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(container, ".task-row.filled", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTaskToDay(draggedId, dropDateKey);
+                    await dbm.moveTask(draggedId, { kind: "day", dateKey: dropDateKey as DateKey });
                     await dbm.setSortOrder(ids);
                 };
             }

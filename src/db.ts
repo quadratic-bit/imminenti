@@ -131,39 +131,40 @@ export class DBManager {
         }
     }
 
-    async moveTaskToOngoing(taskId: number): Promise<void> {
+    async moveTask(taskId: number, dest: Location): Promise<void> {
         const db = await this.get();
-        await db.execute(
-            `
-            UPDATE tasks
-            SET due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            `,
-            [taskId]
-        );
-    }
 
-    async moveTaskToDay(taskId: number, dateKey: string): Promise<void> {
-        const db = await this.get();
+        if (dest.kind === "ongoing") {
+            await db.execute(
+                `
+                UPDATE tasks
+                SET due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                `,
+                [taskId]
+            );
+            return;
+        }
+
+        if (dest.kind === "today") {
+            await db.execute(
+                `
+                UPDATE tasks
+                SET due_date = NULL, is_today = 1, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                `,
+                [taskId]
+            );
+            return;
+        }
+
         await db.execute(
             `
             UPDATE tasks
             SET due_date = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             `,
-            [dateKey, taskId]
-        );
-    }
-
-    async moveTaskToToday(taskId: number): Promise<void> {
-        const db = await this.get();
-        await db.execute(
-            `
-            UPDATE tasks
-            SET due_date = NULL, is_today = 1, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            `,
-            [taskId]
+            [dest.dateKey, taskId]
         );
     }
 
