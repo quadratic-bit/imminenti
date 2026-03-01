@@ -1,14 +1,9 @@
 import "./styles.css";
 import { DBManager } from "./db";
-import { Task, DateKey } from "./task";
+import { Task, DateKey, Location } from "./task";
 
-type ModalState = { mode: "create"; target: "day";     dateKey: string }
-                | { mode: "create"; target: "ongoing"                  }
-                | { mode: "create"; target: "today"                    }
-                | { mode: "edit";   target: "day";     task: Task      }
-                | { mode: "edit";   target: "ongoing"; task: Task      }
-                | { mode: "edit";   target: "today";   task: Task      };
-
+type ModalState = { mode: "create"; location: Location }
+                | { mode: "edit";   task:     Task     };
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -786,62 +781,41 @@ function openModal(state: ModalState): void {
     const deleteBtn    = qs<HTMLButtonElement>  ("#delete-task-btn");
     const saveBtn      = qs<HTMLButtonElement>  ("#save-task-btn");
 
-    if (state.mode === "create" && state.target === "day") {
-        titleEl.textContent = "Add task";
-        contextEl.textContent = `Due: ${formatLongDate(state.dateKey)}`;
-        titleInput.value = "";
-        notesInput.value = "";
-        urgentField.hidden = false;
-        urgentInput.checked = false;
-        deleteBtn.hidden = true;
-        saveBtn.textContent = "Create";
-    } else if (state.mode === "create" && state.target === "ongoing") {
-        titleEl.textContent = "Add ongoing task";
-        contextEl.textContent = "Ongoing task";
-        titleInput.value = "";
-        notesInput.value = "";
-        urgentField.hidden = true;
-        urgentInput.checked = true;
-        deleteBtn.hidden = true;
-        saveBtn.textContent = "Create";
-    } else if (state.mode === "create" && state.target === "today") {
-        titleEl.textContent = "Add today task";
-        contextEl.textContent = "Task for Today";
-        titleInput.value = "";
-        notesInput.value = "";
-        urgentField.hidden = false;
-        urgentInput.checked = false;
-        deleteBtn.hidden = true;
-        saveBtn.textContent = "Create";
-    } else if (state.mode === "edit" && state.target === "day") {
-        titleEl.textContent = "Edit task";
-        contextEl.textContent = `Due: ${state.task.due_date
-            ? formatLongDate(state.task.due_date)
-            : "No due date"}`;
-        titleInput.value = state.task.title ?? "";
-        notesInput.value = state.task.notes ?? "";
-        urgentField.hidden = false;
-        urgentInput.checked = state.task.ongoing;
-        deleteBtn.hidden = false;
-        saveBtn.textContent = "Save";
-    } else if (state.mode === "edit" && state.target === "today") {
-        titleEl.textContent = "Edit today task";
-        contextEl.textContent = "Task for Today";
-        titleInput.value = state.task.title ?? "";
-        notesInput.value = state.task.notes ?? "";
-        urgentField.hidden = false;
-        urgentInput.checked = state.task.ongoing;
-        deleteBtn.hidden = false;
-        saveBtn.textContent = "Save";
+    const isCreate = state.mode === "create";
+    const task = state.mode === "edit" ? state.task : null;
+    const loc  = isCreate ? state.location : state.task.location;
+
+    titleInput.value = task?.title ?? "";
+    notesInput.value = task?.notes ?? "";
+
+    urgentField.hidden = loc.kind === "ongoing";
+    urgentInput.checked = loc.kind === "ongoing" ? true : (task?.ongoing ?? false);
+
+    deleteBtn.hidden = isCreate;
+    saveBtn.textContent = isCreate ? "Create" : "Save";
+
+    if (isCreate) {
+        if (loc.kind === "day") {
+            titleEl.textContent = "Add task";
+            contextEl.textContent = `Due: ${formatLongDate(loc.dateKey)}`;
+        } else if (loc.kind === "today") {
+            titleEl.textContent = "Add today task";
+            contextEl.textContent = "Task for Today";
+        } else {
+            titleEl.textContent = "Add ongoing task";
+            contextEl.textContent = "Ongoing task";
+        }
     } else {
-        titleEl.textContent = "Edit ongoing task";
-        contextEl.textContent = "Ongoing task";
-        titleInput.value = state.task.title ?? "";
-        notesInput.value = state.task.notes ?? "";
-        urgentField.hidden = true;
-        urgentInput.checked = true;
-        deleteBtn.hidden = false;
-        saveBtn.textContent = "Save";
+        if (loc.kind === "day") {
+            titleEl.textContent = "Edit task";
+            contextEl.textContent = `Due: ${formatLongDate(loc.dateKey)}`;
+        } else if (loc.kind === "today") {
+            titleEl.textContent = "Edit today task";
+            contextEl.textContent = "Task for Today";
+        } else {
+            titleEl.textContent = "Edit ongoing task";
+            contextEl.textContent = "Ongoing task";
+        }
     }
 
     if (dialog.open) dialog.close();
@@ -872,67 +846,77 @@ async function saveModal(): Promise<void> {
 
     const db = await dbm.get();
 
-    if (modalState.mode === "create" && modalState.target === "day") {
-        await db.execute(
-            `
-            INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
-            VALUES (
-                ?, ?, ?, ?, 0,
-                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date = ?)
-            )
-            `,
-            [title, notes, modalState.dateKey, ongoingInput.checked ? 1 : 0, modalState.dateKey]
-        );
-    } else if (modalState.mode === "create" && modalState.target === "ongoing") {
-        await db.execute(
-            `
-            INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
-            VALUES (
-                ?, ?, NULL, 1, 0,
-                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date IS NULL AND is_urgent = 1)
-            )
-            `,
-            [title, notes]
-        );
-    } else if (modalState.mode === "create" && modalState.target === "today") {
-        await db.execute(
-            `
-            INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
-            VALUES (
-                ?, ?, NULL, ?, 1,
-                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE is_today = 1)
-            )
-            `,
-            [title, notes, ongoingInput.checked ? 1 : 0]
-        );
-    } else if (modalState.mode === "edit" && modalState.target === "day") {
-        await db.execute(
-            `
-            UPDATE tasks
-            SET title = ?, notes = ?, is_urgent = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            `,
-            [title, notes, ongoingInput.checked ? 1 : 0, modalState.task.id]
-        );
-    } else if (modalState.mode === "edit" && modalState.target === "ongoing") {
-        await db.execute(
-            `
-            UPDATE tasks
-            SET title = ?, notes = ?, due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            `,
-            [title, notes, modalState.task.id]
-        );
-    } else if (modalState.mode === "edit" && modalState.target === "today") {
-        await db.execute(
-            `
-            UPDATE tasks
-            SET title = ?, notes = ?, is_urgent = ?, is_today = 1, due_date = NULL,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+    const loc = modalState.mode === "create"
+              ? modalState.location
+              : modalState.task.location;
+
+    if (modalState.mode === "create") {
+        if (loc.kind === "day") {
+            await db.execute(
+                `
+                INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
+                VALUES (
+                    ?, ?, ?, ?, 0,
+                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date = ?)
+                )
                 `,
-            [title, notes, ongoingInput.checked ? 1 : 0, modalState.task.id]
-        );
+                [title, notes, loc.dateKey, ongoingInput.checked ? 1 : 0, loc.dateKey]
+            );
+        } else if (loc.kind === "ongoing") {
+            await db.execute(
+                `
+                INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
+                VALUES (
+                    ?, ?, NULL, 1, 0,
+                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date IS NULL AND is_urgent = 1)
+                )
+                `,
+                [title, notes]
+            );
+        } else {
+            await db.execute(
+                `
+                INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
+                VALUES (
+                    ?, ?, NULL, ?, 1,
+                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE is_today = 1)
+                )
+                `,
+                [title, notes, ongoingInput.checked ? 1 : 0]
+            );
+        }
+    } else {
+        const id = modalState.task.id;
+
+        if (loc.kind === "day") {
+            await db.execute(
+                `
+                UPDATE tasks
+                SET title = ?, notes = ?, is_urgent = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                `,
+                [title, notes, ongoingInput.checked ? 1 : 0, id]
+            );
+        } else if (loc.kind === "ongoing") {
+            await db.execute(
+                `
+                UPDATE tasks
+                SET title = ?, notes = ?, due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                `,
+                [title, notes, id]
+            );
+        } else {
+            await db.execute(
+                `
+                UPDATE tasks
+                SET title = ?, notes = ?, is_urgent = ?, is_today = 1, due_date = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                `,
+                [title, notes, ongoingInput.checked ? 1 : 0, id]
+            );
+        }
     }
 
     closeModal();
@@ -989,28 +973,25 @@ function wireEvents(): void {
             const id = Number(filledRow.dataset.taskId);
             const task = visibleTaskById.get(id);
             if (!task) return;
-
-            if (filledRow.closest(".today-box")) openModal({ mode: "edit", target: "today", task });
-            else openModal({ mode: "edit", target: "day", task });
-
+            openModal({ mode: "edit", task });
             return;
         }
 
         const todayBox = target.closest<HTMLElement>(".today-box");
         if (todayBox) {
-            openModal({ mode: "create", target: "today" });
+            openModal({ mode: "create", location: { kind: "today" } });
             return;
         }
 
         const dayBox = target.closest<HTMLElement>(".day-box");
         if (dayBox) {
-            const dateKey = dayBox.dataset.dayDate;
-            if (dateKey) openModal({ mode: "create", target: "day", dateKey });
+            const dateKey = dayBox.dataset.dayDate as DateKey | undefined;
+            if (dateKey) openModal({ mode: "create", location: { kind: "day", dateKey } });
         }
     });
 
     qs<HTMLButtonElement>("#add-ongoing-btn").addEventListener("click", () => {
-        openModal({ mode: "create", target: "ongoing" });
+        openModal({ mode: "create", location: { kind: "ongoing" } });
     });
 
     qs<HTMLDivElement>("#ongoing-list").addEventListener("click", (e) => {
@@ -1024,7 +1005,7 @@ function wireEvents(): void {
         if (!item) return;
         const id = Number(item.dataset.taskId);
         const task = visibleTaskById.get(id);
-        if (task) openModal({ mode: "edit", target: "ongoing", task });
+        if (task) openModal({ mode: "edit", task });
     });
 
     qs<HTMLButtonElement>("#cancel-task-btn").addEventListener("click", () => closeModal());

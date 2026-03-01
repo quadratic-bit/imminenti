@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { Task, DateKey } from "./task";
+import { Task, DateKey, Location } from "./task";
 
 type SqlDb = Awaited<ReturnType<typeof Database.load>>;
 
@@ -15,17 +15,28 @@ type TaskRow = {
     updated_at: string;
 };
 
-const toTask = (r: TaskRow): Task => ({
-    id: r.id,
-    title: r.title,
-    notes: r.notes ?? "",
-    due_date: (r.due_date as any) ?? null,
-    ongoing: r.is_urgent === 1,
-    today:   r.is_today === 1,
-    sort_order: r.sort_order,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-});
+const toTask = (r: TaskRow): Task => {
+    const due = (r.due_date as DateKey | null) ?? null;
+    const isToday = r.is_today === 1;
+
+    const location: Location =
+        isToday ? { kind: "today" } :
+        due     ? { kind: "day", dateKey: due } :
+                  { kind: "ongoing" };
+
+    return {
+        id: r.id,
+        title: r.title,
+        notes: r.notes ?? "",
+        due_date: due,
+        ongoing: r.is_urgent === 1,
+        today: isToday,
+        sort_order: r.sort_order,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        location
+    }
+};
 
 export class DBManager {
     private promise: Promise<SqlDb> | null = null;
