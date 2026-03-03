@@ -35,7 +35,7 @@ export function renderWeekGrid(state: AppState, root: Document = document): void
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
 
-            const urgentMark = task.ongoing ? `<span class="urgent-pill">urgent</span>` : "";
+            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
             const title = escapeHtml(task.title);
             const notesPreview = task.notes?.trim()
                 ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
@@ -76,7 +76,7 @@ export function renderWeekGrid(state: AppState, root: Document = document): void
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-empty="1"></div>`;
 
-            const urgentMark = task.ongoing ? `<span class="urgent-pill">urgent</span>` : "";
+            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
             const title = escapeHtml(task.title);
             const notesPreview = task.notes?.trim()
                 ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`

@@ -85,7 +85,7 @@ export class ModalController {
         notesInput.value = task?.notes ?? "";
 
         urgentField.hidden  = loc.kind === "ongoing";
-        urgentInput.checked = loc.kind === "ongoing" ? true : (task?.ongoing ?? false);
+        urgentInput.checked = loc.kind === "ongoing" ? true : (task?.urgent ?? false);
 
         deleteBtn.hidden    = isCreate;
         saveBtn.textContent = isCreate ? "Create" : "Save";

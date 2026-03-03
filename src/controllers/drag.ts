@@ -238,7 +238,7 @@ export class DragController {
         const notesPreview = task.notes?.trim()
             ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
             : "";
-        const urgentMark = task.ongoing
+        const urgentMark = task.urgent
             ? `<span class="urgent-pill">urgent</span>`
             : "";
 
@@ -388,7 +388,7 @@ export class DragController {
         const notes = task?.notes?.trim()
             ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
             : "";
-        const urgentMark = task?.ongoing
+        const urgentMark = task?.urgent
             ? `<span class="urgent-pill">urgent</span>`
             : "";
 

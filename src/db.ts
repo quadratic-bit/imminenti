@@ -29,7 +29,7 @@ const toTask = (r: TaskRow): Task => {
         title: r.title,
         notes: r.notes ?? "",
         due_date: due,
-        ongoing: r.is_urgent === 1,
+        urgent: r.is_urgent === 1,
         today: isToday,
         sort_order: r.sort_order,
         created_at: r.created_at,

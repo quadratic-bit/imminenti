@@ -10,7 +10,7 @@ export type Task = {
     notes:      string;
     due_date:   DateKey | null;
 
-    ongoing:    boolean;
+    urgent:     boolean;
     today:      boolean;
 
     sort_order: number;
