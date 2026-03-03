@@ -1,7 +1,6 @@
 import "./styles.css";
 import { state } from "./state";
-import { Task } from "./task";
-import { getWeekDateKeys } from "./utils/date";
+import { fetchViewTasks } from "./data/viewTasks";
 import { renderAll } from "./ui/all";
 import { wireEvents } from "./ui/events";
 import { ModalController } from "./controllers/modal";
@@ -15,32 +14,27 @@ const drag = new DragController({
     render: () => renderAll(state),
 });
 
-async function loadTasksForCurrentView(): Promise<void> {
-    const weekKeys = getWeekDateKeys(state.currentWeekStart);
-    const weekStartKey = weekKeys[0];
-    const weekEndKey   = weekKeys[6];
-
-    state.weekTasks    = await state.dbm.getWeekTasks(weekStartKey, weekEndKey);
-    state.ongoingTasks = await state.dbm.getOngoingTasks();
-    state.todayTasks   = await state.dbm.getTodayTasks();
-
-    state.visibleTaskById = new Map<number, Task>();
-    for (const t of state.weekTasks)    state.visibleTaskById.set(t.id, t);
-    for (const t of state.ongoingTasks) state.visibleTaskById.set(t.id, t);
-    for (const t of state.todayTasks)   state.visibleTaskById.set(t.id, t);
-}
-
 async function refresh(): Promise<void> {
-    await loadTasksForCurrentView()
-    .then(() => {
+    await fetchViewTasks(state.dbm, state.currentWeekStart)
+    .then(data => {
+
+        state.weekTasks    = data.weekTasks;
+        state.todayTasks   = data.todayTasks;
+        state.ongoingTasks = data.ongoingTasks;
+
+        state.visibleTaskById = data.visibleTaskById;
+
         drag.resetForRender();
         renderAll(state);
     })
     .catch(err => {
         console.error(err);
+
         const grid = document.querySelector<HTMLDivElement>("#week-grid");
         const list = document.querySelector<HTMLDivElement>("#ongoing-list");
+
         drag.resetForRender();
+
         if (grid) grid.innerHTML = `<div class="error-box">Failed to load data.</div>`;
         if (list) list.innerHTML = `<div class="error-box">Failed to load data.</div>`;
     });
