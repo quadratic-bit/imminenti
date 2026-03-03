@@ -1,5 +1,6 @@
 import { DBManager } from "./db";
 import { Task, Location } from "./task";
+import { startOfWeek } from "./utils/date";
 
 export type ModalState = { mode: "create"; location: Location }
                        | { mode: "edit";   task:     Task     };
@@ -19,14 +20,6 @@ export type AppState = {
 
     modal: ModalState | null;
 };
-
-function startOfWeek(d: Date): Date {
-    const x    = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const dow  = x.getDay();
-    const diff = dow === 0 ? -6 : 1 - dow; // maybe make it customizable
-    x.setDate(x.getDate() + diff);
-    return x;
-}
 
 export function createInitialState(now = new Date()): AppState {
     return {

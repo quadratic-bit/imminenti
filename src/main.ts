@@ -1,6 +1,14 @@
 import "./styles.css";
 import { state, type ModalState } from "./state";
 import { Task, DateKey } from "./task";
+import {
+    addDays,
+    dateToKey,
+    formatLongDate,
+    formatMonthDay,
+    formatWeekRange,
+    getWeekDateKeys,
+} from "./utils/date";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -538,54 +546,6 @@ function escapeHtml(input: string): string {
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
-}
-
-function dateToKey(d: Date): DateKey {
-    const y   = d.getFullYear();
-    const m   = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-}
-
-function keyToDate(key: string): Date {
-    const [y, m, d] = key.split("-").map(Number);
-    return new Date(y, (m ?? 1) - 1, d ?? 1);
-}
-
-function addDays(d: Date, n: number): Date {
-    const copy = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    copy.setDate(copy.getDate() + n);
-    return copy;
-}
-
-function getWeekDateKeys(weekStart: Date): DateKey[] {
-    return Array.from({ length: 7 }, (_, i) => dateToKey(addDays(weekStart, i)));
-}
-
-function formatWeekRange(weekStart: Date): string {
-    const end = addDays(weekStart, 6);
-    const fmt = new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day:   "numeric",
-        year:  "numeric",
-    });
-    return `${fmt.format(weekStart)} — ${fmt.format(end)}`;
-}
-
-function formatLongDate(key: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-        weekday: "long",
-        year:    "numeric",
-        month:   "short",
-        day:     "numeric",
-    }).format(keyToDate(key));
-}
-
-function formatMonthDay(key: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day:   "numeric",
-    }).format(keyToDate(key));
 }
 
 function byDueDateMap(tasks: Task[]): Map<string, Task[]> {
