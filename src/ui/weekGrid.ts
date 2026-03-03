@@ -1,6 +1,7 @@
 import type { AppState } from "../state";
 import type { Task } from "../task";
 import { escapeHtml } from "../utils/dom";
+import { renderTaskRowContent } from "./taskRender";
 import { dateToKey, formatMonthDay, formatWeekRange, getWeekDateKeys } from "../utils/date";
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -35,19 +36,9 @@ export function renderWeekGrid(state: AppState, root: Document = document): void
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
 
-            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
-            const title = escapeHtml(task.title);
-            const notesPreview = task.notes?.trim()
-                ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
-                : "";
-
             return `
                 <div class="task-row filled" data-task-id="${task.id}" title="Click to edit">
-                    <div class="row-main">
-                        <span class="row-title">${title}</span>
-                        ${notesPreview}
-                    </div>
-                    ${urgentMark}
+                    ${renderTaskRowContent(task)}
                 </div>
             `;
         }).join("");
@@ -76,19 +67,9 @@ export function renderWeekGrid(state: AppState, root: Document = document): void
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-empty="1"></div>`;
 
-            const urgentMark = task.urgent ? `<span class="urgent-pill">urgent</span>` : "";
-            const title = escapeHtml(task.title);
-            const notesPreview = task.notes?.trim()
-                ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
-                : "";
-
             return `
                 <div class="task-row filled" data-task-id="${task.id}" title="Click to edit">
-                    <div class="row-main">
-                        <span class="row-title">${title}</span>
-                        ${notesPreview}
-                    </div>
-                    ${urgentMark}
+                    ${renderTaskRowContent(task)}
                 </div>
             `;
         }).join("");

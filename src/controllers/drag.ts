@@ -1,6 +1,7 @@
 import type { AppState } from "../state";
 import type { Task, DateKey } from "../task";
-import { closestAtPoint, escapeHtml, qs } from "../utils/dom";
+import { closestAtPoint, qs } from "../utils/dom";
+import { renderTaskRowContent, renderOngoingItemContent } from "../ui/taskRender";
 
 type DragKind = "day" | "ongoing" | "today";
 
@@ -233,22 +234,7 @@ export class DragController {
         el.className = `task-row filled${asPreview ? " drag-preview" : ""}`;
         el.dataset.taskId = String(task.id);
         el.title = "Click to edit";
-
-        const title = escapeHtml(task.title);
-        const notesPreview = task.notes?.trim()
-            ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
-            : "";
-        const urgentMark = task.urgent
-            ? `<span class="urgent-pill">urgent</span>`
-            : "";
-
-        el.innerHTML = `
-            <div class="row-main">
-                <span class="row-title">${title}</span>
-                ${notesPreview}
-            </div>
-            ${urgentMark}
-        `;
+        el.innerHTML = renderTaskRowContent(task);
     }
 
     private paintGrid(container: HTMLElement, ids: number[], previewId: number | null): void {
@@ -368,15 +354,10 @@ export class DragController {
             el.className = "ongoing-item drag-preview";
             el.dataset.taskId = String(taskId);
 
-            const title = escapeHtml(task?.title ?? `#${taskId}`);
-            const notes = task?.notes?.trim()
-                ? `<div class="ongoing-notes">${escapeHtml(task.notes.trim())}</div>`
-                : "";
-
-            el.innerHTML = `
-                <div class="ongoing-item-title">${title}</div>
-                ${notes}
-            `;
+            el.innerHTML = renderOngoingItemContent({
+                title: task?.title ?? `#${taskId}`,
+                notes: task?.notes ?? "",
+            });
             return el;
         }
 
@@ -384,21 +365,11 @@ export class DragController {
         el.className = "task-row filled drag-preview";
         el.dataset.taskId = String(taskId);
 
-        const title = escapeHtml(task?.title ?? `#${taskId}`);
-        const notes = task?.notes?.trim()
-            ? `<span class="row-notes">${escapeHtml(task.notes.trim())}</span>`
-            : "";
-        const urgentMark = task?.urgent
-            ? `<span class="urgent-pill">urgent</span>`
-            : "";
-
-        el.innerHTML = `
-            <div class="row-main">
-                <span class="row-title">${title}</span>
-                ${notes}
-            </div>
-            ${urgentMark}
-        `;
+        el.innerHTML = renderTaskRowContent({
+            title: task?.title ?? `#${taskId}`,
+            notes: task?.notes ?? "",
+            urgent: !!task?.urgent,
+        });
         return el;
     }
 
