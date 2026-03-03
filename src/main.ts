@@ -1,9 +1,12 @@
 import "./styles.css";
-import { state, type ModalState } from "./state";
+import { state } from "./state";
 import { Task, DateKey } from "./task";
-import { addDays, formatLongDate, getWeekDateKeys } from "./utils/date";
+import { addDays, getWeekDateKeys } from "./utils/date";
 import { closestAtPoint, escapeHtml, isTypingTarget, qs } from "./utils/dom";
 import { renderAll } from "./ui/all";
+import { ModalController } from "./controllers/modal";
+
+const modal = new ModalController({ state, refresh });
 
 type DragKind = "day" | "ongoing" | "today";
 
@@ -543,168 +546,6 @@ async function loadTasksForCurrentView(): Promise<void> {
     for (const t of state.todayTasks)   state.visibleTaskById.set(t.id, t);
 }
 
-function openModal(next: ModalState): void {
-    state.modal = next;
-
-    const dialog       = qs<HTMLDialogElement>  ("#task-dialog");
-    const titleEl      = qs<HTMLHeadingElement> ("#dialog-title");
-    const contextEl    = qs<HTMLDivElement>     ("#dialog-context");
-    const titleInput   = qs<HTMLInputElement>   ("#task-title-input");
-    const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input");
-    const urgentField  = qs<HTMLLabelElement>   ("#task-urgent-field");
-    const urgentInput  = qs<HTMLInputElement>   ("#task-urgent-input");
-    const deleteBtn    = qs<HTMLButtonElement>  ("#delete-task-btn");
-    const saveBtn      = qs<HTMLButtonElement>  ("#save-task-btn");
-
-    const isCreate = next.mode === "create";
-    const task     = next.mode === "edit" ? next.task : null;
-    const loc      = isCreate ? next.location : next.task.location;
-
-    titleInput.value = task?.title ?? "";
-    notesInput.value = task?.notes ?? "";
-
-    urgentField.hidden  = loc.kind === "ongoing";
-    urgentInput.checked = loc.kind === "ongoing" ? true : (task?.ongoing ?? false);
-
-    deleteBtn.hidden    = isCreate;
-    saveBtn.textContent = isCreate ? "Create" : "Save";
-
-    if (isCreate) {
-        if (loc.kind === "day") {
-            titleEl.textContent = "Add task";
-            contextEl.textContent = `Due: ${formatLongDate(loc.dateKey)}`;
-        } else if (loc.kind === "today") {
-            titleEl.textContent = "Add today task";
-            contextEl.textContent = "Task for Today";
-        } else {
-            titleEl.textContent = "Add ongoing task";
-            contextEl.textContent = "Ongoing task";
-        }
-    } else {
-        if (loc.kind === "day") {
-            titleEl.textContent = "Edit task";
-            contextEl.textContent = `Due: ${formatLongDate(loc.dateKey)}`;
-        } else if (loc.kind === "today") {
-            titleEl.textContent = "Edit today task";
-            contextEl.textContent = "Task for Today";
-        } else {
-            titleEl.textContent = "Edit ongoing task";
-            contextEl.textContent = "Ongoing task";
-        }
-    }
-
-    if (dialog.open) dialog.close();
-    dialog.showModal();
-    queueMicrotask(() => titleInput.focus());
-}
-
-function closeModal(): void {
-    const dialog = qs<HTMLDialogElement>("#task-dialog");
-    if (dialog.open) dialog.close();
-    state.modal = null;
-}
-
-async function saveModal(): Promise<void> {
-    if (!state.modal) return;
-
-    const titleInput   = qs<HTMLInputElement>   ("#task-title-input");
-    const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input");
-    const ongoingInput = qs<HTMLInputElement>   ("#task-urgent-input");
-
-    const title = titleInput.value.trim();
-    const notes = notesInput.value.trim();
-
-    if (!title) {
-        titleInput.focus();
-        return;
-    }
-
-    const db = await state.dbm.get();
-
-    const loc = state.modal.mode === "create"
-              ? state.modal.location
-              : state.modal.task.location;
-
-    if (state.modal.mode === "create") {
-        if (loc.kind === "day") {
-            await db.execute(
-                `
-                INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
-                VALUES (
-                    ?, ?, ?, ?, 0,
-                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date = ?)
-                )
-                `,
-                [title, notes, loc.dateKey, ongoingInput.checked ? 1 : 0, loc.dateKey]
-            );
-        } else if (loc.kind === "ongoing") {
-            await db.execute(
-                `
-                INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
-                VALUES (
-                    ?, ?, NULL, 1, 0,
-                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE due_date IS NULL AND is_urgent = 1)
-                )
-                `,
-                [title, notes]
-            );
-        } else {
-            await db.execute(
-                `
-                INSERT INTO tasks (title, notes, due_date, is_urgent, is_today, sort_order)
-                VALUES (
-                    ?, ?, NULL, ?, 1,
-                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE is_today = 1)
-                )
-                `,
-                [title, notes, ongoingInput.checked ? 1 : 0]
-            );
-        }
-    } else {
-        const id = state.modal.task.id;
-
-        if (loc.kind === "day") {
-            await db.execute(
-                `
-                UPDATE tasks
-                SET title = ?, notes = ?, is_urgent = ?, is_today = 0, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                `,
-                [title, notes, ongoingInput.checked ? 1 : 0, id]
-            );
-        } else if (loc.kind === "ongoing") {
-            await db.execute(
-                `
-                UPDATE tasks
-                SET title = ?, notes = ?, due_date = NULL, is_urgent = 1, is_today = 0, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                `,
-                [title, notes, id]
-            );
-        } else {
-            await db.execute(
-                `
-                UPDATE tasks
-                SET title = ?, notes = ?, is_urgent = ?, is_today = 1, due_date = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                `,
-                [title, notes, ongoingInput.checked ? 1 : 0, id]
-            );
-        }
-    }
-
-    closeModal();
-    await refresh();
-}
-
-async function deleteModalTask(): Promise<void> {
-    if (!state.modal || state.modal.mode !== "edit") return;
-    await state.dbm.deleteTask(state.modal.task.id);
-    closeModal();
-    await refresh();
-}
-
 async function refresh(): Promise<void> {
     await loadTasksForCurrentView()
     .then(() => {
@@ -723,6 +564,8 @@ async function refresh(): Promise<void> {
 }
 
 function wireEvents(): void {
+    modal.attach();
+
     qs<HTMLButtonElement>("#prev-week-btn").addEventListener("click", async () => {
         state.currentWeekStart = addDays(state.currentWeekStart, -7);
         await refresh();
@@ -743,25 +586,25 @@ function wireEvents(): void {
             const id = Number(filledRow.dataset.taskId);
             const task = state.visibleTaskById.get(id);
             if (!task) return;
-            openModal({ mode: "edit", task });
+            modal.openEdit(task);
             return;
         }
 
         const todayBox = target.closest<HTMLElement>(".today-box");
         if (todayBox) {
-            openModal({ mode: "create", location: { kind: "today" } });
+            modal.openCreate({ kind: "today" });
             return;
         }
 
         const dayBox = target.closest<HTMLElement>(".day-box");
         if (dayBox) {
             const dateKey = dayBox.dataset.dayDate as DateKey | undefined;
-            if (dateKey) openModal({ mode: "create", location: { kind: "day", dateKey } });
+            if (dateKey) modal.openCreate({ kind: "day", dateKey });
         }
     });
 
     qs<HTMLButtonElement>("#add-ongoing-btn").addEventListener("click", () => {
-        openModal({ mode: "create", location: { kind: "ongoing" } });
+        modal.openCreate({ kind: "ongoing" });
     });
 
     const ongoingListEl = qs<HTMLDivElement>("#ongoing-list");
@@ -772,27 +615,7 @@ function wireEvents(): void {
         if (!item) return;
         const id = Number(item.dataset.taskId);
         const task = state.visibleTaskById.get(id);
-        if (task) openModal({ mode: "edit", task });
-    });
-
-    qs<HTMLButtonElement>("#cancel-task-btn").addEventListener("click", () => closeModal());
-    qs<HTMLButtonElement>("#delete-task-btn").addEventListener("click", async () => {
-        try {
-            await deleteModalTask();
-        } catch (err) {
-            console.error(err);
-            alert("Delete failed. Check console.");
-        }
-    });
-
-    qs<HTMLFormElement>("#task-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        try {
-            await saveModal();
-        } catch (err) {
-            console.error(err);
-            alert("Save failed. Check console.");
-        }
+        if (task) modal.openEdit(task);
     });
 
     qs<HTMLDivElement>("#week-grid").addEventListener("pointerdown", (e) => {
@@ -907,12 +730,6 @@ function wireEvents(): void {
         state.suppressNextClick = false;
         cancelDrag();
         drag = { state: "idle" };
-    });
-
-    const dialog = qs<HTMLDialogElement>("#task-dialog");
-    dialog.addEventListener("cancel", (e) => {
-        e.preventDefault();
-        closeModal();
     });
 
     window.addEventListener("keydown", async (e) => {

@@ -1,5 +1,5 @@
-export function qs<T extends Element>(selector: string): T {
-    const el = document.querySelector<T>(selector);
+export function qs<T extends Element>(selector: string, root: Document = document): T {
+    const el = root.querySelector<T>(selector);
     if (!el) throw new Error(`Missing element: ${selector}`);
     return el;
 }
