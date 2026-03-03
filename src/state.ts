@@ -1,9 +1,6 @@
 import { DBManager } from "./db";
-import { Task, Location } from "./task";
+import { Task } from "./task";
 import { startOfWeek } from "./utils/date";
-
-export type ModalState = { mode: "create"; location: Location }
-                       | { mode: "edit";   task:     Task     };
 
 export type AppState = {
     dbm: DBManager;
@@ -17,8 +14,6 @@ export type AppState = {
     visibleTaskById: Map<number, Task>;
 
     suppressNextClick: boolean;
-
-    modal: ModalState | null;
 };
 
 export function createInitialState(now = new Date()): AppState {
@@ -34,8 +29,6 @@ export function createInitialState(now = new Date()): AppState {
         visibleTaskById: new Map(),
 
         suppressNextClick: false,
-
-        modal: null,
     };
 }
 

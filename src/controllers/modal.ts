@@ -1,7 +1,10 @@
-import type { AppState, ModalState } from "../state";
+import type { AppState } from "../state";
 import type { Location, Task } from "../task";
 import { qs } from "../utils/dom";
 import { formatLongDate } from "../utils/date";
+
+export type ModalState = { mode: "create"; location: Location }
+                       | { mode: "edit";   task:     Task     };
 
 type Deps = {
     state: AppState;
@@ -12,6 +15,7 @@ type Deps = {
 export class ModalController {
     private root: Document;
     private attached = false;
+    private modal: ModalState | null = null;
 
     constructor(private deps: Deps) {
         this.root = deps.root ?? document;
@@ -50,7 +54,7 @@ export class ModalController {
     }
 
     private open(): void {
-        const next = this.deps.state.modal;
+        const next = this.modal;
         if (!next) return;
 
         this.render(next);
@@ -112,24 +116,24 @@ export class ModalController {
     }
 
     openCreate(location: Location): void {
-        this.deps.state.modal = { mode: "create", location };
+        this.modal = { mode: "create", location };
         this.open();
     }
 
     openEdit(task: Task): void {
-        this.deps.state.modal = { mode: "edit", task };
+        this.modal = { mode: "edit", task };
         this.open();
     }
 
     close(): void {
         const dialog = qs<HTMLDialogElement>("#task-dialog", this.root);
         if (dialog.open) dialog.close();
-        this.deps.state.modal = null;
+        this.modal = null;
     }
 
     async save(): Promise<void> {
         const { state, refresh } = this.deps;
-        if (!state.modal) return;
+        if (!this.modal) return;
 
         const titleInput   = qs<HTMLInputElement>   ("#task-title-input",  this.root);
         const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input",  this.root);
@@ -145,11 +149,11 @@ export class ModalController {
 
         const db = await state.dbm.get();
 
-        const loc = state.modal.mode === "create"
-                  ? state.modal.location
-                  : state.modal.task.location;
+        const loc = this.modal.mode === "create"
+                  ? this.modal.location
+                  : this.modal.task.location;
 
-        if (state.modal.mode === "create") {
+        if (this.modal.mode === "create") {
             if (loc.kind === "day") {
                 await db.execute(
                     `
@@ -185,7 +189,7 @@ export class ModalController {
                 );
             }
         } else {
-            const id = state.modal.task.id;
+            const id = this.modal.task.id;
 
             if (loc.kind === "day") {
                 await db.execute(
@@ -225,9 +229,9 @@ export class ModalController {
 
     async deleteCurrent(): Promise<void> {
         const { state, refresh } = this.deps;
-        if (!state.modal || state.modal.mode !== "edit") return;
+        if (!this.modal || this.modal.mode !== "edit") return;
 
-        await state.dbm.deleteTask(state.modal.task.id);
+        await state.dbm.deleteTask(this.modal.task.id);
         this.close();
         await refresh();
     }
