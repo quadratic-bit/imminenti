@@ -1,24 +1,8 @@
 import "./styles.css";
-import { DBManager } from "./db";
-import { Task, DateKey, Location } from "./task";
-
-type ModalState = { mode: "create"; location: Location }
-                | { mode: "edit";   task:     Task     };
+import { state, type ModalState } from "./state";
+import { Task, DateKey } from "./task";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-let dbm = new DBManager();
-
-let currentWeekStart = startOfWeek(new Date());
-
-let weekTasks:    Task[] = [];
-let ongoingTasks: Task[] = [];
-let todayTasks:   Task[] = [];
-
-let visibleTaskById = new Map<number, Task>();
-let suppressNextClick = false;
-
-let modalState: ModalState | null = null;
 
 type DragKind = "day" | "ongoing" | "today";
 
@@ -130,8 +114,8 @@ function updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
 }
 
 function swallowSuppressedClick(e: MouseEvent): void {
-    if (!suppressNextClick) return;
-    suppressNextClick = false;
+    if (!state.suppressNextClick) return;
+    state.suppressNextClick = false;
     e.preventDefault();
     e.stopImmediatePropagation();
 }
@@ -194,7 +178,7 @@ function paintGrid(container: HTMLElement, ids: number[], previewId: number | nu
             setRowEmpty(rows[i]);
             continue;
         }
-        const t = visibleTaskById.get(id);
+        const t = state.visibleTaskById.get(id);
         if (!t) {
             setRowEmpty(rows[i]);
             continue;
@@ -216,7 +200,7 @@ function indexOfFilledRow(container: HTMLElement, rowEl: HTMLElement): number {
 }
 
 function buildPreview(kind: DragKind, taskId: number): HTMLElement {
-    const task = visibleTaskById.get(taskId);
+    const task = state.visibleTaskById.get(taskId);
 
     if (kind === "ongoing") {
         const el = document.createElement("button");
@@ -382,7 +366,7 @@ function orderFromDom(container: HTMLElement, selector: string, draggedId: numbe
 function beginDragFromPending(x: number, y: number): void {
     if (drag.state !== "pending") return;
 
-    const task  = visibleTaskById.get(drag.taskId);
+    const task  = state.visibleTaskById.get(drag.taskId);
     const title = task?.title ?? `#${drag.taskId}`;
 
     const ghost = document.createElement("div");
@@ -455,7 +439,7 @@ function beginDragFromPending(x: number, y: number): void {
 function cleanupDragVisuals(): void {
     const prev  = drag;
     const ghost = prev.state === "active" ? prev.ghostEl : null;
-    suppressNextClick = false;
+    state.suppressNextClick = false;
 
     drag = { state: "idle" };
 
@@ -492,8 +476,8 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(list, ".ongoing-item", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTask(draggedId, { kind: "ongoing" });
-                    await dbm.setSortOrder(ids);
+                    await state.dbm.moveTask(draggedId, { kind: "ongoing" });
+                    await state.dbm.setSortOrder(ids);
                 };
             }
         }
@@ -504,8 +488,8 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(container, ".task-row.filled", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTask(draggedId, { kind: "today" });
-                    await dbm.setSortOrder(ids);
+                    await state.dbm.moveTask(draggedId, { kind: "today" });
+                    await state.dbm.setSortOrder(ids);
                 };
             }
         }
@@ -515,8 +499,8 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
             const ids = orderFromDom(container, ".task-row.filled", draggedId);
             if (ids.length) {
                 applyDbChange = async () => {
-                    await dbm.moveTask(draggedId, { kind: "day", dateKey: dropDateKey as DateKey });
-                    await dbm.setSortOrder(ids);
+                    await state.dbm.moveTask(draggedId, { kind: "day", dateKey: dropDateKey as DateKey });
+                    await state.dbm.setSortOrder(ids);
                 };
             }
         }
@@ -574,14 +558,6 @@ function addDays(d: Date, n: number): Date {
     return copy;
 }
 
-function startOfWeek(d: Date): Date {
-    const x    = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const dow  = x.getDay();
-    const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday cuz I'm slav
-    x.setDate(x.getDate() + diff);
-    return x;
-}
-
 function getWeekDateKeys(weekStart: Date): DateKey[] {
     return Array.from({ length: 7 }, (_, i) => dateToKey(addDays(weekStart, i)));
 }
@@ -624,18 +600,18 @@ function byDueDateMap(tasks: Task[]): Map<string, Task[]> {
 }
 
 async function loadTasksForCurrentView(): Promise<void> {
-    const weekKeys = getWeekDateKeys(currentWeekStart);
+    const weekKeys = getWeekDateKeys(state.currentWeekStart);
     const weekStartKey = weekKeys[0];
     const weekEndKey   = weekKeys[6];
 
-    weekTasks    = await dbm.getWeekTasks(weekStartKey, weekEndKey);
-    ongoingTasks = await dbm.getOngoingTasks();
-    todayTasks   = await dbm.getTodayTasks();
+    state.weekTasks    = await state.dbm.getWeekTasks(weekStartKey, weekEndKey);
+    state.ongoingTasks = await state.dbm.getOngoingTasks();
+    state.todayTasks   = await state.dbm.getTodayTasks();
 
-    visibleTaskById = new Map<number, Task>();
-    for (const t of weekTasks)    visibleTaskById.set(t.id, t);
-    for (const t of ongoingTasks) visibleTaskById.set(t.id, t);
-    for (const t of todayTasks)   visibleTaskById.set(t.id, t);
+    state.visibleTaskById = new Map<number, Task>();
+    for (const t of state.weekTasks)    state.visibleTaskById.set(t.id, t);
+    for (const t of state.ongoingTasks) state.visibleTaskById.set(t.id, t);
+    for (const t of state.todayTasks)   state.visibleTaskById.set(t.id, t);
 }
 
 function renderWeekGrid(): void {
@@ -643,11 +619,11 @@ function renderWeekGrid(): void {
     const weekRangeEl = document.querySelector<HTMLDivElement>("#week-range");
     if (!weekGrid || !weekRangeEl) return;
 
-    const weekKeys = getWeekDateKeys(currentWeekStart);
+    const weekKeys = getWeekDateKeys(state.currentWeekStart);
     const todayKey = dateToKey(new Date());
-    const grouped  = byDueDateMap(weekTasks);
+    const grouped  = byDueDateMap(state.weekTasks);
 
-    weekRangeEl.textContent = `${formatWeekRange(currentWeekStart)}`;
+    weekRangeEl.textContent = `${formatWeekRange(state.currentWeekStart)}`;
 
     const renderDayBox = (weekIndex: number): string => {
         const dateKey = weekKeys[weekIndex];
@@ -692,7 +668,7 @@ function renderWeekGrid(): void {
     };
 
     const renderTodayBox = (): string => {
-        const tasks = todayTasks;
+        const tasks = state.todayTasks;
         const slots = Math.max(6, tasks.length);
 
         const rows = Array.from({ length: slots }, (_, i) => {
@@ -745,12 +721,12 @@ function renderOngoingList(): void {
     const list = document.querySelector<HTMLDivElement>("#ongoing-list");
     if (!list) return;
 
-    if (ongoingTasks.length === 0) {
+    if (state.ongoingTasks.length === 0) {
         list.innerHTML = `<div class="empty-ongoing">No ongoing tasks.</div>`;
         return;
     }
 
-    list.innerHTML = ongoingTasks.map((t) => {
+    list.innerHTML = state.ongoingTasks.map((t) => {
         const title = escapeHtml(t.title);
         const notes = t.notes?.trim()
             ? `<div class="ongoing-notes">${escapeHtml(t.notes.trim())}</div>`
@@ -775,8 +751,8 @@ function qs<T extends Element>(selector: string): T {
     return el;
 }
 
-function openModal(state: ModalState): void {
-    modalState = state;
+function openModal(next: ModalState): void {
+    state.modal = next;
 
     const dialog       = qs<HTMLDialogElement>  ("#task-dialog");
     const titleEl      = qs<HTMLHeadingElement> ("#dialog-title");
@@ -788,9 +764,9 @@ function openModal(state: ModalState): void {
     const deleteBtn    = qs<HTMLButtonElement>  ("#delete-task-btn");
     const saveBtn      = qs<HTMLButtonElement>  ("#save-task-btn");
 
-    const isCreate = state.mode === "create";
-    const task     = state.mode === "edit" ? state.task : null;
-    const loc      = isCreate ? state.location : state.task.location;
+    const isCreate = next.mode === "create";
+    const task     = next.mode === "edit" ? next.task : null;
+    const loc      = isCreate ? next.location : next.task.location;
 
     titleInput.value = task?.title ?? "";
     notesInput.value = task?.notes ?? "";
@@ -833,11 +809,11 @@ function openModal(state: ModalState): void {
 function closeModal(): void {
     const dialog = qs<HTMLDialogElement>("#task-dialog");
     if (dialog.open) dialog.close();
-    modalState = null;
+    state.modal = null;
 }
 
 async function saveModal(): Promise<void> {
-    if (!modalState) return;
+    if (!state.modal) return;
 
     const titleInput   = qs<HTMLInputElement>   ("#task-title-input");
     const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input");
@@ -851,13 +827,13 @@ async function saveModal(): Promise<void> {
         return;
     }
 
-    const db = await dbm.get();
+    const db = await state.dbm.get();
 
-    const loc = modalState.mode === "create"
-              ? modalState.location
-              : modalState.task.location;
+    const loc = state.modal.mode === "create"
+              ? state.modal.location
+              : state.modal.task.location;
 
-    if (modalState.mode === "create") {
+    if (state.modal.mode === "create") {
         if (loc.kind === "day") {
             await db.execute(
                 `
@@ -893,7 +869,7 @@ async function saveModal(): Promise<void> {
             );
         }
     } else {
-        const id = modalState.task.id;
+        const id = state.modal.task.id;
 
         if (loc.kind === "day") {
             await db.execute(
@@ -931,8 +907,8 @@ async function saveModal(): Promise<void> {
 }
 
 async function deleteModalTask(): Promise<void> {
-    if (!modalState || modalState.mode !== "edit") return;
-    await dbm.deleteTask(modalState.task.id);
+    if (!state.modal || state.modal.mode !== "edit") return;
+    await state.dbm.deleteTask(state.modal.task.id);
     closeModal();
     await refresh();
 }
@@ -956,12 +932,12 @@ async function refresh(): Promise<void> {
 
 function wireEvents(): void {
     qs<HTMLButtonElement>("#prev-week-btn").addEventListener("click", async () => {
-        currentWeekStart = addDays(currentWeekStart, -7);
+        state.currentWeekStart = addDays(state.currentWeekStart, -7);
         await refresh();
     });
 
     qs<HTMLButtonElement>("#next-week-btn").addEventListener("click", async () => {
-        currentWeekStart = addDays(currentWeekStart, 7);
+        state.currentWeekStart = addDays(state.currentWeekStart, 7);
         await refresh();
     });
 
@@ -973,7 +949,7 @@ function wireEvents(): void {
         const filledRow = target.closest<HTMLElement>(".task-row.filled");
         if (filledRow) {
             const id = Number(filledRow.dataset.taskId);
-            const task = visibleTaskById.get(id);
+            const task = state.visibleTaskById.get(id);
             if (!task) return;
             openModal({ mode: "edit", task });
             return;
@@ -1003,7 +979,7 @@ function wireEvents(): void {
         const item = target.closest<HTMLElement>(".ongoing-item");
         if (!item) return;
         const id = Number(item.dataset.taskId);
-        const task = visibleTaskById.get(id);
+        const task = state.visibleTaskById.get(id);
         if (task) openModal({ mode: "edit", task });
     });
 
@@ -1043,7 +1019,7 @@ function wireEvents(): void {
         drag = {
             state: "pending",
             taskId: id,
-            kind: (visibleTaskById.get(id)?.location.kind ?? (inToday ? "today" : "day")),
+            kind: (state.visibleTaskById.get(id)?.location.kind ?? (inToday ? "today" : "day")),
             pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
@@ -1119,8 +1095,8 @@ function wireEvents(): void {
         if (e.pointerId !== drag.pointerId) return;
 
         if (drag.state === "active") {
-            suppressNextClick = true;
-            setTimeout(() => { suppressNextClick = false; }, 0);
+            state.suppressNextClick = true;
+            setTimeout(() => { state.suppressNextClick = false; }, 0);
 
             try {
                 await finishDrag(e.clientX, e.clientY);
@@ -1136,7 +1112,7 @@ function wireEvents(): void {
     window.addEventListener("pointercancel", (e) => {
         if (drag.state === "idle") return;
         if (e.pointerId !== drag.pointerId) return;
-        suppressNextClick = false;
+        state.suppressNextClick = false;
         cancelDrag();
         drag = { state: "idle" };
     });
@@ -1159,11 +1135,11 @@ function wireEvents(): void {
 
         if (e.key === "h") {
             e.preventDefault();
-            currentWeekStart = addDays(currentWeekStart, -7);
+            state.currentWeekStart = addDays(state.currentWeekStart, -7);
             await refresh();
         } else if (e.key === "l") {
             e.preventDefault();
-            currentWeekStart = addDays(currentWeekStart, 7);
+            state.currentWeekStart = addDays(state.currentWeekStart, 7);
             await refresh();
         }
     });
