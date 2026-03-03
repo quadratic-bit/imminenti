@@ -9,6 +9,7 @@ import {
     formatWeekRange,
     getWeekDateKeys,
 } from "./utils/date";
+import { closestAtPoint, escapeHtml, isTypingTarget, qs } from "./utils/dom";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -75,11 +76,6 @@ function repaintBaseOrders(keepSourceHole: boolean): void {
         paintGrid(container, ids, null);
     }
     baseIdsByContainer.clear();
-}
-
-function closestAtPoint<T extends Element>(selector: string, x: number, y: number): T | null {
-    const el = document.elementFromPoint(x, y) as HTMLElement | null;
-    return (el?.closest(selector) as T | null) ?? null;
 }
 
 function setDayHover(dayBox: HTMLElement | null): void {
@@ -540,14 +536,6 @@ async function finishDrag(dropX: number, dropY: number): Promise<void> {
     }
 }
 
-function escapeHtml(input: string): string {
-    return input.replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-}
-
 function byDueDateMap(tasks: Task[]): Map<string, Task[]> {
     const m = new Map<string, Task[]>();
     for (const t of tasks) {
@@ -703,12 +691,6 @@ function renderOngoingList(): void {
 function renderAll(): void {
     renderWeekGrid();
     renderOngoingList();
-}
-
-function qs<T extends Element>(selector: string): T {
-    const el = document.querySelector<T>(selector);
-    if (!el) throw new Error(`Missing element: ${selector}`);
-    return el;
 }
 
 function openModal(next: ModalState): void {
@@ -1084,14 +1066,8 @@ function wireEvents(): void {
     });
 
     window.addEventListener("keydown", async (e) => {
-        const target = e.target as HTMLElement | null;
-        const typing = !!target &&
-            (target.tagName === "INPUT" ||
-             target.tagName === "TEXTAREA" ||
-             target.isContentEditable);
-
         const dialogOpen = qs<HTMLDialogElement>("#task-dialog").open;
-        if (typing || dialogOpen) return;
+        if (isTypingTarget(e.target) || dialogOpen) return;
 
         if (e.key === "h") {
             e.preventDefault();
