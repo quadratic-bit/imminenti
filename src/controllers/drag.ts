@@ -3,6 +3,7 @@ import type { Task, DateKey } from "../task";
 import { closestAtPoint } from "../utils/dom";
 import { renderTaskRowContent, renderOngoingItemContent } from "../ui/taskRender";
 import { OrderedDragController, type OrderedDragAdapter, type DragHit } from "./orderedDrag";
+import { applyStripesCssVar } from "../ui/taskStripes";
 
 type Kind = "day" | "today" | "ongoing";
 type Meta = { dateKey?: DateKey };
@@ -24,13 +25,15 @@ function setRowEmpty(el: HTMLElement): void {
     el.innerHTML = "";
     delete el.dataset.taskId;
     el.title = "";
+    el.style.removeProperty("--task-stripes");
 }
 
-function setRowFilled(el: HTMLElement, task: Task, asPreview: boolean): void {
+function setRowFilled(el: HTMLElement, task: Task, asPreview: boolean, stripeColors: string[] | undefined): void {
     el.className = `task-row filled${asPreview ? " drag-preview" : ""}`;
     el.dataset.taskId = String(task.id);
     el.title = "Click to edit";
     el.innerHTML = renderTaskRowContent(task);
+    applyStripesCssVar(el, stripeColors);
 }
 
 function idsInGrid(listEl: HTMLElement): number[] {
@@ -64,7 +67,8 @@ function paintGrid(state: AppState, listEl: HTMLElement, ids: number[], previewI
             continue;
         }
 
-        setRowFilled(rows[i], t, previewId !== null && id === previewId);
+        const meta = state.taskLinkMetaByTaskId.get(id);
+        setRowFilled(rows[i], t, previewId !== null && id === previewId, meta?.colors);
     }
 }
 
@@ -165,6 +169,8 @@ function makeOngoingAdapter(state: AppState): OrderedDragAdapter<Kind, Meta> {
                     title: task?.title ?? `#${draggedId}`,
                     notes: task?.notes ?? "",
                 });
+                const meta = state.taskLinkMetaByTaskId.get(draggedId);
+                applyStripesCssVar(el, meta?.colors);
                 previewEl = el;
             }
 

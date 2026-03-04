@@ -319,7 +319,7 @@ textarea {
 }
 
 .task-row.filled {
-    background: var(--row-bg);
+    background: var(--task-stripes, var(--row-bg));
     border-color: var(--surface-1);
     display: flex;
     align-items: center;
@@ -328,7 +328,6 @@ textarea {
 }
 
 .task-row.filled:hover {
-    background: var(--row-hover-bg);
     border-color: var(--surface-2);
 }
 
@@ -399,7 +398,7 @@ body.dragging .ongoing-item:active {
 .ongoing-item {
     width: 100%;
     text-align: left;
-    background: var(--row-bg);
+    background: var(--task-stripes, var(--row-bg));
     border: 1px solid var(--danger-2);
     border-radius: 10px;
     padding: 10px;
@@ -407,7 +406,6 @@ body.dragging .ongoing-item:active {
 }
 
 .ongoing-item:hover {
-    background: var(--row-hover-bg);
     border-color: var(--danger);
 }
 

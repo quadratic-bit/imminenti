@@ -3,6 +3,7 @@ import type { Task } from "../task";
 import { escapeHtml } from "../utils/dom";
 import { renderTaskRowContent } from "./taskRender";
 import { dateToKey, formatMonthDay, formatWeekRange, getWeekDateKeys } from "../utils/date";
+import { styleAttrForStripes } from "./taskStripes";
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function byDueDateMap(tasks: Task[]): Map<string, Task[]> {
@@ -36,8 +37,10 @@ export function renderWeekGrid(state: AppState, root: Document = document): void
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-day-date="${dateKey}" data-empty="1"></div>`;
 
+            const meta = state.taskLinkMetaByTaskId.get(task.id);
+            const stripeStyle = styleAttrForStripes(meta?.colors);
             return `
-                <div class="task-row filled" data-task-id="${task.id}" title="Click to edit">
+                <div class="task-row filled" data-task-id="${task.id}" title="Click to edit"${stripeStyle}>
                     ${renderTaskRowContent(task)}
                 </div>
             `;
@@ -67,8 +70,10 @@ export function renderWeekGrid(state: AppState, root: Document = document): void
             const task = tasks[i];
             if (!task) return `<div class="task-row empty" data-empty="1"></div>`;
 
+            const meta = state.taskLinkMetaByTaskId.get(task.id);
+            const stripeStyle = styleAttrForStripes(meta?.colors);
             return `
-                <div class="task-row filled" data-task-id="${task.id}" title="Click to edit">
+                <div class="task-row filled" data-task-id="${task.id}" title="Click to edit"${stripeStyle}>
                     ${renderTaskRowContent(task)}
                 </div>
             `;
