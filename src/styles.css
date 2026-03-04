@@ -797,3 +797,79 @@ body.dragging .link-item {
     outline: 1px dashed var(--accent);
     outline-offset: -1px;
 }
+
+.task-links-section {
+    display: grid;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.task-links-title {
+    font-size: 0.84rem;
+    color: var(--muted-strong);
+}
+
+.task-links-box {
+    border: 1px solid var(--surface-0);
+    border-radius: 10px;
+    background: var(--panel-2);
+    padding: 10px;
+    max-height: 220px;
+    overflow: auto;
+    display: grid;
+    gap: 10px;
+}
+
+.task-link-group {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--panel);
+}
+
+.task-link-group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+}
+
+.task-link-group-name {
+    font-size: 0.86rem;
+    font-weight: 650;
+}
+
+.task-link-group-list {
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+}
+
+.task-link-check {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.task-link-check:hover {
+    border-color: var(--surface-0);
+    background: color-mix(in srgb, var(--panel-2) 80%, var(--surface-0) 20%);
+}
+
+.task-link-check-title {
+    font-size: 0.84rem;
+}
+
+.task-link-check-url {
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}

@@ -36,6 +36,7 @@ async function refresh(): Promise<void> {
         state.linkCollections      = data.linkCollections;
         state.linksByCollectionId  = data.linksByCollectionId;
         state.taskLinkMetaByTaskId = data.taskLinkMetaByTaskId;
+        state.taskLinkIdsByTaskId  = data.taskLinkIdsByTaskId;
 
         drag.resetForRender();
         linkDrag.resetForRender();

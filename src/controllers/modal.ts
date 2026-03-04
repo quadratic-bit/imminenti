@@ -1,7 +1,12 @@
 import type { AppState } from "../state";
 import type { Location, Task } from "../task";
-import { qs } from "../utils/dom";
+import { qs, escapeHtml } from "../utils/dom";
 import { formatLongDate } from "../utils/date";
+
+function numId(x: unknown): number | null {
+    const n = Number(x);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export type ModalState = { mode: "create"; location: Location }
                        | { mode: "edit";   task:     Task     };
@@ -79,6 +84,7 @@ export class ModalController {
 
         const isCreate = next.mode === "create";
         const task     = next.mode === "edit" ? next.task : null;
+        const taskId   = next.mode === "edit" ? next.task.id : null;
         const loc      = isCreate ? next.location : next.task.location;
 
         titleInput.value = task?.title ?? "";
@@ -113,6 +119,8 @@ export class ModalController {
                 contextEl.textContent = "Ongoing task";
             }
         }
+
+        this.renderLinksBox(taskId);
     }
 
     openCreate(location: Location): void {
@@ -134,6 +142,11 @@ export class ModalController {
     async save(): Promise<void> {
         const { state, refresh } = this.deps;
         if (!this.modal) return;
+
+        const checkedLinkIds = Array.from(
+            this.root.querySelectorAll<HTMLInputElement>(`#task-links-box input[type="checkbox"][data-link-id]:checked`)
+        ).map((el) => numId(el.dataset.linkId))
+         .filter((n): n is number => n !== null);
 
         const titleInput   = qs<HTMLInputElement>   ("#task-title-input",  this.root);
         const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input",  this.root);
@@ -188,6 +201,10 @@ export class ModalController {
                     [title, notes, ongoingInput.checked ? 1 : 0]
                 );
             }
+            const rows = await db.select<{ id: number }[]>(`SELECT last_insert_rowid() AS id`);
+            const newId = rows[0]?.id;
+            if (!newId) throw new Error("Failed to read inserted task id.");
+            await state.dbm.setTaskLinks(newId, checkedLinkIds);
         } else {
             const id = this.modal.task.id;
 
@@ -220,12 +237,12 @@ export class ModalController {
                     [title, notes, ongoingInput.checked ? 1 : 0, id]
                 );
             }
+            await state.dbm.setTaskLinks(id, checkedLinkIds);
         }
 
         this.close();
         await refresh();
     }
-
 
     async deleteCurrent(): Promise<void> {
         const { state, refresh } = this.deps;
@@ -234,5 +251,61 @@ export class ModalController {
         await state.dbm.deleteTask(this.modal.task.id);
         this.close();
         await refresh();
+    }
+
+    private renderLinksBox(taskId: number | null): void {
+        const { state } = this.deps;
+        const box = qs<HTMLDivElement>("#task-links-box", this.root);
+
+        if (state.linkCollections.length === 0) {
+            box.innerHTML = `<div class="empty-ongoing">No link collections.</div>`;
+            return;
+        }
+
+        const selected = new Set<number>(taskId ? (state.taskLinkIdsByTaskId.get(taskId) ?? []) : []);
+
+        const HEX_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+        const safeColor = (c: string) => (HEX_RE.test(c.trim()) ? c.trim() : "#888888");
+
+        const shortUrl = (u: string) => {
+            try {
+                const x = new URL(u);
+                return x.host + x.pathname;
+            } catch {
+                return u;
+            }
+        };
+
+        box.innerHTML = state.linkCollections.map((c) => {
+            const links = state.linksByCollectionId.get(c.id) ?? [];
+            const swatch = safeColor(c.color);
+
+            const list = links.length === 0
+                ? `<div class="links-empty">No links.</div>`
+                : links.map((l) => {
+                    const checked = selected.has(l.id) ? "checked" : "";
+                    return `
+                        <label class="task-link-check">
+                            <input type="checkbox" data-link-id="${l.id}" ${checked} />
+                            <div>
+                                <div class="task-link-check-title">${escapeHtml(l.title)}</div>
+                                <div class="task-link-check-url">${escapeHtml(shortUrl(l.url))}</div>
+                            </div>
+                        </label>
+                    `;
+                }).join("");
+
+            return `
+                <div class="task-link-group" data-collection-id="${c.id}">
+                    <div class="task-link-group-head">
+                        <div class="collection-swatch" style="background:${swatch};"></div>
+                        <div class="task-link-group-name">${escapeHtml(c.name)}</div>
+                    </div>
+                    <div class="task-link-group-list">
+                        ${list}
+                    </div>
+                </div>
+            `;
+        }).join("");
     }
 }

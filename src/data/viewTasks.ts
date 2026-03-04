@@ -13,6 +13,7 @@ export type ViewTasks = {
     linkCollections:      LinkCollection[];
     linksByCollectionId:  Map<number, Link[]>;
     taskLinkMetaByTaskId: Map<number, { collectionIds: number[]; colors: string[] }>;
+    taskLinkIdsByTaskId:  Map<number, number[]>;
 };
 
 export async function fetchViewTasks(dbm: DBManager, currentWeekStart: Date): Promise<ViewTasks> {
@@ -43,6 +44,14 @@ export async function fetchViewTasks(dbm: DBManager, currentWeekStart: Date): Pr
     const visibleTaskIds = Array.from(visibleTaskById.keys());
     const joinRows = await dbm.getTaskLinkJoinRowsForTasks(visibleTaskIds);
 
+    const taskLinkIdsByTaskId = new Map<number, number[]>();
+
+    for (const row of joinRows) {
+        const arr = taskLinkIdsByTaskId.get(row.task_id) ?? [];
+        arr.push(row.link_id);
+        taskLinkIdsByTaskId.set(row.task_id, arr);
+    }
+
     const colorByCollectionId = new Map<number, string>();
     for (const c of linkCollections) colorByCollectionId.set(c.id, c.color);
 
@@ -68,5 +77,6 @@ export async function fetchViewTasks(dbm: DBManager, currentWeekStart: Date): Pr
         linkCollections,
         linksByCollectionId,
         taskLinkMetaByTaskId,
+        taskLinkIdsByTaskId,
     };
 }
