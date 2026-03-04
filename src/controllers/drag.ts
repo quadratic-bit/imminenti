@@ -1,40 +1,11 @@
 import type { AppState } from "../state";
 import type { Task, DateKey } from "../task";
-import { closestAtPoint, qs } from "../utils/dom";
+import { closestAtPoint } from "../utils/dom";
 import { renderTaskRowContent, renderOngoingItemContent } from "../ui/taskRender";
+import { OrderedDragController, type OrderedDragAdapter, type DragHit } from "./orderedDrag";
 
-type DragKind = "day" | "ongoing" | "today";
-
-type DragIdle = { state: "idle" };
-type DragPending = {
-    state: "pending";
-    taskId: number;
-    kind: DragKind;
-    pointerId: number;
-    startX: number;
-    startY: number;
-    sourceEl: HTMLElement;
-}
-type DragActive = {
-    state: "active";
-    taskId: number;
-    kind: DragKind;
-    pointerId: number;
-    sourceEl: HTMLElement;
-    ghostEl: HTMLDivElement;
-
-    startRect: DOMRect;
-    startKind: DragKind;
-    startContainer: HTMLElement | null;
-    startIndex: number;
-
-    lastY: number;
-    movingDown: boolean;
-}
-
-type DragState = DragIdle | DragPending | DragActive;
-
-type ResetPreviewOpts = { keepSourceHole: boolean; removePreviewEl: boolean; };
+type Kind = "day" | "today" | "ongoing";
+type Meta = { dateKey?: DateKey };
 
 type Deps = {
     state: AppState;
@@ -43,622 +14,368 @@ type Deps = {
     root?: Document;
 };
 
+function numId(x: unknown): number | null {
+    const n = Number(x);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function setRowEmpty(el: HTMLElement): void {
+    el.className = "task-row empty";
+    el.innerHTML = "";
+    delete el.dataset.taskId;
+    el.title = "";
+}
+
+function setRowFilled(el: HTMLElement, task: Task, asPreview: boolean): void {
+    el.className = `task-row filled${asPreview ? " drag-preview" : ""}`;
+    el.dataset.taskId = String(task.id);
+    el.title = "Click to edit";
+    el.innerHTML = renderTaskRowContent(task);
+}
+
+function idsInGrid(listEl: HTMLElement): number[] {
+    return Array.from(listEl.querySelectorAll<HTMLElement>(".task-row.filled"))
+    .map((el) => numId(el.dataset.taskId))
+    .filter((n): n is number => n !== null);
+}
+
+function paintGrid(state: AppState, listEl: HTMLElement, ids: number[], previewId: number | null): void {
+    const rows = Array.from(listEl.querySelectorAll<HTMLElement>(".task-row"));
+
+    while (rows.length < ids.length) {
+        const r = document.createElement("div");
+        r.className = "task-row empty";
+        listEl.appendChild(r);
+        rows.push(r);
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+        const id = ids[i];
+
+        // -1 is a hole
+        if (id === undefined || id === -1) {
+            setRowEmpty(rows[i]);
+            continue;
+        }
+
+        const t = state.visibleTaskById.get(id);
+        if (!t) {
+            setRowEmpty(rows[i]);
+            continue;
+        }
+
+        setRowFilled(rows[i], t, previewId !== null && id === previewId);
+    }
+}
+
+function indexOfFilledRow(listEl: HTMLElement, rowEl: HTMLElement): number {
+    const filled = Array.from(listEl.querySelectorAll<HTMLElement>(".task-row.filled"));
+    const idx = filled.indexOf(rowEl);
+    return idx < 0 ? 0 : idx;
+}
+
+function orderFromDom(listEl: HTMLElement, selector: string, draggedId: number): number[] {
+    const els = Array.from(listEl.querySelectorAll<HTMLElement>(selector));
+    const ids: number[] = [];
+    const seen = new Set<number>();
+
+    for (const el of els) {
+        if (el.classList.contains("drag-source")) continue;
+        const id = numId(el.dataset.taskId);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+    }
+
+    if (!seen.has(draggedId)) ids.push(draggedId);
+    return ids;
+}
+
+function makeOngoingAdapter(state: AppState): OrderedDragAdapter<Kind, Meta> {
+    let hovered = false;
+
+    let previewEl: HTMLElement | null = null;
+    let previewList: HTMLElement | null = null;
+
+    const setHover = (on: boolean) => {
+        const list = document.querySelector<HTMLElement>("#ongoing-list");
+        if (!list) return;
+        list.classList.toggle("drop-hover-ongoing", on);
+    };
+
+    const setPreviewing = (on: boolean) => {
+        const list = document.querySelector<HTMLElement>("#ongoing-list");
+        if (!list) return;
+        list.classList.toggle("previewing", on);
+    };
+
+    return {
+        pick(target) {
+            const item = target.closest<HTMLElement>(".ongoing-item");
+            if (!item) return null;
+
+            const id = numId(item.dataset.taskId);
+            if (!id) return null;
+
+            return { kind: "ongoing", id, sourceEl: item };
+        },
+
+        hitTest(x, y) {
+            const list = closestAtPoint<HTMLElement>("#ongoing-list", x, y);
+            if (!list) return null;
+            return { kind: "ongoing", dropZoneEl: list, listEl: list, meta: {} };
+        },
+
+        startHit(pick) {
+            const list = pick.sourceEl.closest<HTMLElement>("#ongoing-list") ?? document.querySelector<HTMLElement>("#ongoing-list");
+            if (!list) return null;
+            return { kind: "ongoing", dropZoneEl: list, listEl: list, meta: {} };
+        },
+
+        sourceIndex(hit, sourceEl) {
+            const items = Array.from(hit.listEl.querySelectorAll<HTMLElement>(".ongoing-item"));
+            const idx = items.indexOf(sourceEl);
+            return idx < 0 ? 0 : idx;
+        },
+
+        itemsForInsert(hit) {
+            return Array.from(hit.listEl.querySelectorAll<HTMLElement>(".ongoing-item"))
+            .filter((el) => !el.classList.contains("drag-preview"))
+            .filter((el) => !el.classList.contains("drag-source"));
+        },
+
+        idsInList(listEl) {
+            return Array.from(listEl.querySelectorAll<HTMLElement>(".ongoing-item"))
+            .filter((el) => !el.classList.contains("drag-preview"))
+            .filter((el) => !el.classList.contains("drag-source"))
+            .map((el) => numId(el.dataset.taskId))
+            .filter((n): n is number => n !== null);
+        },
+
+        preview(hit, draggedId, idx) {
+            setPreviewing(true);
+
+            if (!previewEl) {
+                const task = state.visibleTaskById.get(draggedId);
+                const el = document.createElement("button");
+                el.type = "button";
+                el.className = "ongoing-item drag-preview";
+                el.dataset.taskId = String(draggedId);
+                el.innerHTML = renderOngoingItemContent({
+                    title: task?.title ?? `#${draggedId}`,
+                    notes: task?.notes ?? "",
+                });
+                previewEl = el;
+            }
+
+            if (!previewList || previewList !== hit.listEl) {
+                previewList = hit.listEl;
+                hit.listEl.appendChild(previewEl);
+            }
+
+            const items = this.itemsForInsert(hit, draggedId);
+            const ref = items[idx] ?? null;
+            hit.listEl.insertBefore(previewEl, ref);
+        },
+
+        clearPreviewDom() {
+            setPreviewing(false);
+            previewEl?.remove();
+            previewEl = null;
+            previewList = null;
+        },
+
+        paintBase() {},
+
+        orderFromDom(listEl, draggedId) {
+            return orderFromDom(listEl, ".ongoing-item", draggedId);
+        },
+
+        setHover(hit) {
+            const on = !!hit;
+            if (on === hovered) return;
+            hovered = on;
+            setHover(on);
+        },
+
+        applySourceVisual(pick) {
+            pick.sourceEl.classList.add("drag-source");
+            pick.sourceEl.style.display = "none";
+        },
+
+        ghostText(id) {
+            return state.visibleTaskById.get(id)?.title ?? `#${id}`;
+        }
+    };
+}
+
+function makeGridAdapter(state: AppState): OrderedDragAdapter<Kind, Meta> {
+    let hoveredBox: HTMLElement | null = null;
+
+    const setHoverBox = (box: HTMLElement | null) => {
+        if (hoveredBox && hoveredBox !== box) hoveredBox.classList.remove("drop-hover");
+        hoveredBox = box;
+        if (hoveredBox) hoveredBox.classList.add("drop-hover");
+    };
+
+    function hitToday(x: number, y: number): DragHit<Kind, Meta> | null {
+        const box = closestAtPoint<HTMLElement>(".today-box", x, y);
+        if (!box) return null;
+        const listEl = box.querySelector<HTMLElement>(".day-rows");
+        if (!listEl) return null;
+        return { kind: "today", dropZoneEl: box, listEl, meta: {} };
+    }
+
+    function hitDay(x: number, y: number): DragHit<Kind, Meta> | null {
+        const box = closestAtPoint<HTMLElement>(".day-box", x, y);
+        if (!box) return null;
+
+        if (box.classList.contains("today-box")) return null;
+
+        const dateKey = box.dataset.dayDate as DateKey | undefined;
+        if (!dateKey) return null;
+
+        const listEl = box.querySelector<HTMLElement>(".day-rows");
+        if (!listEl) return null;
+
+        return { kind: "day", dropZoneEl: box, listEl, meta: { dateKey } };
+    }
+
+    return {
+        pick(target) {
+            const row = target.closest<HTMLElement>(".task-row.filled");
+            if (!row) return null;
+
+            const id = numId(row.dataset.taskId);
+            if (!id) return null;
+
+            const inToday = !!row.closest(".today-box");
+            return { kind: inToday ? "today" : "day", id, sourceEl: row };
+        },
+
+        hitTest(x, y) {
+            return hitToday(x, y) ?? hitDay(x, y);
+        },
+
+        startHit(pick) {
+            if (pick.kind === "today") {
+                const box = pick.sourceEl.closest<HTMLElement>(".today-box");
+                const listEl = box?.querySelector<HTMLElement>(".day-rows") ?? null;
+                if (!box || !listEl) return null;
+                return { kind: "today", dropZoneEl: box, listEl, meta: {} };
+            }
+
+            const box = pick.sourceEl.closest<HTMLElement>(".day-box");
+            if (!box || box.classList.contains("today-box")) return null;
+
+            const dateKey = box.dataset.dayDate as DateKey | undefined;
+            const listEl = box.querySelector<HTMLElement>(".day-rows") ?? null;
+            if (!dateKey || !listEl) return null;
+
+            return { kind: "day", dropZoneEl: box, listEl, meta: { dateKey } };
+        },
+
+        sourceIndex(hit, sourceEl) {
+            return indexOfFilledRow(hit.listEl, sourceEl);
+        },
+
+        itemsForInsert(hit, draggedId) {
+            return Array.from(hit.listEl.querySelectorAll<HTMLElement>(".task-row.filled")).filter(
+                (el) => numId(el.dataset.taskId) !== draggedId
+            );
+        },
+
+        idsInList(listEl) {
+            return idsInGrid(listEl);
+        },
+
+        preview(hit, draggedId, idx) {
+            const base = idsInGrid(hit.listEl).filter((id) => id !== draggedId);
+            base.splice(Math.max(0, Math.min(idx, base.length)), 0, draggedId);
+            paintGrid(state, hit.listEl, base, draggedId);
+        },
+
+        clearPreviewDom() {},
+
+        paintBase(listEl, baseIds, ctx) {
+            let ids = baseIds;
+
+            if (ctx.keepSourceHole && ctx.drag.startListEl === listEl) {
+                ids = baseIds.slice();
+                ids.splice(ctx.drag.startIndex, 0, -1);
+            }
+
+            paintGrid(state, listEl, ids, null);
+        },
+
+        orderFromDom(listEl, draggedId) {
+            return orderFromDom(listEl, ".task-row.filled", draggedId);
+        },
+
+        setHover(hit) {
+            setHoverBox(hit ? hit.dropZoneEl : null);
+        },
+
+        applySourceVisual(pick) {
+            setRowEmpty(pick.sourceEl);
+        },
+
+        ghostText(id) {
+            return state.visibleTaskById.get(id)?.title ?? `#${id}`;
+        },
+    };
+}
+
 export class DragController {
     private root: Document;
+    private engine: OrderedDragController<Kind, Meta>;
 
-    private drag: DragState = { state: "idle" };
-    private hoveredDayBox: HTMLElement | null = null;
-
-    private previewEl:        HTMLElement | null = null;
-    private previewKind:      DragKind    | null = null;
-    private previewContainer: HTMLElement | null = null;
-    private previewIndex = -1;
-
-    private baseIdsByContainer = new Map<HTMLElement, number[]>();
-
-    private attached = false;
-
-    constructor(private deps: Deps) {
+    constructor(deps: Deps) {
         this.root = deps.root ?? document;
+
+        const weekGridEl = this.root.querySelector<HTMLDivElement>("#week-grid");
+        const ongoingEl = this.root.querySelector<HTMLDivElement>("#ongoing-list");
+
+        this.engine = new OrderedDragController<Kind, Meta>({
+            adapters: [makeOngoingAdapter(deps.state), makeGridAdapter(deps.state)],
+
+            refresh: deps.refresh,
+            render: deps.render,
+
+            onDrop: async ({ draggedId, to, order }) => {
+                const { dbm } = deps.state;
+
+                if (to.kind === "ongoing") {
+                    await dbm.moveTask(draggedId, { kind: "ongoing" });
+                    await dbm.setSortOrder(order);
+                    return;
+                }
+
+                if (to.kind === "today") {
+                    await dbm.moveTask(draggedId, { kind: "today" });
+                    await dbm.setSortOrder(order);
+                    return;
+                }
+
+                const dateKey = to.meta.dateKey as DateKey;
+                await dbm.moveTask(draggedId, { kind: "day", dateKey });
+                await dbm.setSortOrder(order);
+            },
+
+            getSuppressNextClick: () => deps.state.suppressNextClick,
+                setSuppressNextClick: (v) => (deps.state.suppressNextClick = v),
+
+                swallowClickEls: [weekGridEl, ongoingEl].filter((x): x is HTMLElement => !!x),
+
+                root: this.root,
+        });
     }
 
     attach(): void {
-        if (this.attached) return;
-        this.attached = true;
-
-        const weekGridEl    = qs<HTMLDivElement>("#week-grid",    this.root);
-        const ongoingListEl = qs<HTMLDivElement>("#ongoing-list", this.root);
-
-        weekGridEl   .addEventListener("click", this.swallowSuppressedClick, { capture: true });
-        ongoingListEl.addEventListener("click", this.swallowSuppressedClick, { capture: true });
-
-        weekGridEl.addEventListener("pointerdown", (e) => {
-            if (e.button !== 0) return;
-            const target = e.target as HTMLElement;
-            const row = target.closest<HTMLElement>(".task-row.filled");
-            if (!row) return;
-
-            const id = Number(row.dataset.taskId);
-            if (!Number.isFinite(id) || id <= 0) return;
-
-            const inToday = !!row.closest(".today-box");
-
-            row.setPointerCapture(e.pointerId);
-
-            const kind = (
-                this.deps.state.visibleTaskById.get(id)?.location.kind
-                ?? (inToday ? "today" : "day")
-            ) as DragKind;
-
-            this.drag = {
-                state: "pending",
-                taskId: id,
-                kind,
-                pointerId: e.pointerId,
-                startX: e.clientX,
-                startY: e.clientY,
-                sourceEl: row,
-            };
-        }, { capture: true });
-
-        ongoingListEl.addEventListener("pointerdown", (e) => {
-            if (e.button !== 0) return;
-            const target = e.target as HTMLElement;
-            const item = target.closest<HTMLElement>(".ongoing-item");
-            if (!item) return;
-
-            const id = Number(item.dataset.taskId);
-            if (!Number.isFinite(id) || id <= 0) return;
-
-            item.setPointerCapture(e.pointerId);
-
-            this.drag = {
-                state: "pending",
-                taskId: id,
-                kind: "ongoing",
-                pointerId: e.pointerId,
-                startX: e.clientX,
-                startY: e.clientY,
-                sourceEl: item,
-            };
-        }, { capture: true });
-
-        window.addEventListener("pointermove", (e) => {
-            if (this.drag.state === "idle") return;
-            if (e.pointerId !== this.drag.pointerId) return;
-
-            if (this.drag.state === "pending") {
-                const dx = e.clientX - this.drag.startX;
-                const dy = e.clientY - this.drag.startY;
-                if ((dx * dx + dy * dy) < 36) return;
-                this.beginDragFromPending(e.clientX, e.clientY);
-                return;
-            }
-
-            e.preventDefault();
-
-            this.updateGhostPosition(this.drag.ghostEl, e.clientX, e.clientY);
-            if (e.clientY !== this.drag.lastY) this.drag.movingDown = e.clientY > this.drag.lastY;
-            this.drag.lastY = e.clientY;
-
-            const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", e.clientX, e.clientY);
-            this.setOngoingHover(ongoingHit);
-
-            if (ongoingHit) {
-                this.setDayHover(null);
-                this.showOngoingPreview(e.clientY, this.drag.movingDown);
-                return;
-            }
-
-            const todayBox = closestAtPoint<HTMLElement>(".today-box", e.clientX, e.clientY);
-            if (todayBox) {
-                this.setDayHover(todayBox);
-                this.showGridPreview("today", todayBox, e.clientY, this.drag.movingDown);
-                return;
-            }
-
-            const dayBox = closestAtPoint<HTMLElement>(".day-box", e.clientX, e.clientY);
-            this.setDayHover(dayBox);
-
-            if (dayBox) {
-                this.showGridPreview("day", dayBox, e.clientY, this.drag.movingDown);
-            } else {
-                this.resetPreview({ keepSourceHole: true, removePreviewEl: true });
-            }
-        }, { passive: false });
-
-        window.addEventListener("pointerup", async (e) => {
-            if (this.drag.state === "idle") return;
-            if (e.pointerId !== this.drag.pointerId) return;
-
-            if (this.drag.state === "active") {
-                this.deps.state.suppressNextClick = true;
-                setTimeout(() => { this.deps.state.suppressNextClick = false; }, 0);
-
-                try {
-                    await this.finishDrag(e.clientX, e.clientY);
-                } catch (err) {
-                    console.error(err);
-                    this.cancelDrag();
-                }
-            }
-
-            this.drag = { state: "idle" };
-        });
-
-        window.addEventListener("pointercancel", (e) => {
-            if (this.drag.state === "idle") return;
-            if (e.pointerId !== this.drag.pointerId) return;
-            this.deps.state.suppressNextClick = false;
-            setTimeout(() => { this.deps.state.suppressNextClick = false; }, 0);
-            this.cancelDrag();
-            this.drag = { state: "idle" };
-        });
+        this.engine.attach();
     }
 
     resetForRender(): void {
-        const prev  = this.drag;
-        const ghost = prev.state === "active" ? prev.ghostEl : null;
-
-        this.drag = { state: "idle" };
-
-        this.setDayHover(null);
-        this.setOngoingHover(false);
-        document.body.classList.remove("dragging");
-
-        if (ghost) ghost.remove();
-
-        this.baseIdsByContainer.clear();
-        this.resetPreview({ keepSourceHole: false, removePreviewEl: true });
-    }
-
-    private idsInGrid(container: HTMLElement): number[] {
-        return Array.from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
-            .map((el) => Number(el.dataset.taskId))
-            .filter((n) => Number.isFinite(n) && n > 0);
-    }
-
-    private rememberBaseOrder(container: HTMLElement, draggedId: number): void {
-        if (this.baseIdsByContainer.has(container)) return;
-        this.baseIdsByContainer.set(container, this.idsInGrid(container).filter((id) => id !== draggedId));
-    }
-
-    private setRowEmpty(el: HTMLElement): void {
-        el.className = "task-row empty";
-        el.innerHTML = "";
-        delete el.dataset.taskId;
-        el.title = "";
-    }
-
-    private setRowFilled(el: HTMLElement, task: Task, asPreview: boolean): void {
-        el.className = `task-row filled${asPreview ? " drag-preview" : ""}`;
-        el.dataset.taskId = String(task.id);
-        el.title = "Click to edit";
-        el.innerHTML = renderTaskRowContent(task);
-    }
-
-    private paintGrid(container: HTMLElement, ids: number[], previewId: number | null): void {
-        const rows = Array.from(container.querySelectorAll<HTMLElement>(".task-row"));
-
-        while (rows.length < ids.length) {
-            const r = this.root.createElement("div");
-            r.className = "task-row empty";
-            container.appendChild(r);
-            rows.push(r);
-        }
-
-        for (let i = 0; i < rows.length; i++) {
-            const id = ids[i];
-            if (id === undefined) {
-                this.setRowEmpty(rows[i]);
-                continue;
-            }
-            const t = this.deps.state.visibleTaskById.get(id);
-            if (!t) {
-                this.setRowEmpty(rows[i]);
-                continue;
-            }
-            this.setRowFilled(rows[i], t, previewId !== null && id === previewId);
-        }
-    }
-
-    private repaintBaseOrders(keepSourceHole: boolean): void {
-        for (const [container, base] of this.baseIdsByContainer) {
-            let ids = base;
-
-            if (keepSourceHole                    &&
-                this.drag.state === "active"      &&
-                this.drag.startKind !== "ongoing" &&
-                this.drag.startContainer === container
-            ) {
-                ids = base.slice();
-                ids.splice(this.drag.startIndex, 0, -1);
-            }
-
-            this.paintGrid(container, ids, null);
-        }
-        this.baseIdsByContainer.clear();
-    }
-
-    private setDayHover(dayBox: HTMLElement | null): void {
-        if (this.hoveredDayBox && this.hoveredDayBox !== dayBox)
-            this.hoveredDayBox.classList.remove("drop-hover");
-
-        this.hoveredDayBox = dayBox;
-        if (this.hoveredDayBox)
-            this.hoveredDayBox.classList.add("drop-hover");
-    }
-
-    private setOngoingHover(on: boolean): void {
-        const list = this.root.querySelector<HTMLElement>("#ongoing-list");
-        if (!list) return;
-        list.classList.toggle("drop-hover-ongoing", on);
-    }
-
-    private setOngoingPreviewing(on: boolean): void {
-        const list = this.root.querySelector<HTMLElement>("#ongoing-list");
-        if (!list) return;
-        list.classList.toggle("previewing", on);
-    }
-
-    private applyDragSourceVisual(): void {
-        if (this.drag.state !== "active") return;
-
-        if (this.drag.kind === "ongoing") {
-            this.drag.sourceEl.classList.add("drag-source");
-            this.drag.sourceEl.style.display = "none";
-            return;
-        }
-
-        this.drag.sourceEl.classList.add("drag-source");
-        this.setRowEmpty(this.drag.sourceEl);
-    }
-
-    private resetPreview(opts: ResetPreviewOpts): void {
-        if (opts.removePreviewEl) this.previewEl?.remove();
-
-        this.previewEl        = null;
-        this.previewKind      = null;
-        this.previewContainer = null;
-        this.previewIndex     = -1;
-
-        this.setOngoingPreviewing(false);
-        this.repaintBaseOrders(opts.keepSourceHole);
-        if (opts.keepSourceHole) this.applyDragSourceVisual();
-    }
-
-    private updateGhostPosition(ghost: HTMLElement, x: number, y: number): void {
-        ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
-    }
-
-    // static for obvious reasons
-    private swallowSuppressedClick = (e: MouseEvent): void => {
-        if (!this.deps.state.suppressNextClick) return;
-        this.deps.state.suppressNextClick = false;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-    };
-
-    private indexOfFilledRow(container: HTMLElement, rowEl: HTMLElement): number {
-        const filled = Array.from(container.querySelectorAll<HTMLElement>(".task-row.filled"));
-        const idx = filled.indexOf(rowEl);
-        return idx < 0 ? 0 : idx;
-    }
-
-    private buildPreview(kind: DragKind, taskId: number): HTMLElement {
-        const task = this.deps.state.visibleTaskById.get(taskId);
-
-        if (kind === "ongoing") {
-            const el = this.root.createElement("button");
-            el.type = "button";
-            el.className = "ongoing-item drag-preview";
-            el.dataset.taskId = String(taskId);
-
-            el.innerHTML = renderOngoingItemContent({
-                title: task?.title ?? `#${taskId}`,
-                notes: task?.notes ?? "",
-            });
-            return el;
-        }
-
-        const el = this.root.createElement("div");
-        el.className = "task-row filled drag-preview";
-        el.dataset.taskId = String(taskId);
-
-        el.innerHTML = renderTaskRowContent({
-            title: task?.title ?? `#${taskId}`,
-            notes: task?.notes ?? "",
-            urgent: !!task?.urgent,
-        });
-        return el;
-    }
-
-    private ensurePreview(kind: DragKind, container: HTMLElement): void {
-        if (this.drag.state !== "active") return;
-
-        if (this.previewKind !== kind || this.previewContainer !== container) {
-            this.resetPreview({ keepSourceHole: true, removePreviewEl: true });
-        }
-
-        this.previewKind      = kind;
-        this.previewContainer = container;
-        this.previewIndex     = -1;
-
-        if (kind !== "ongoing") {
-            this.rememberBaseOrder(container, this.drag.taskId);
-            return;
-        }
-
-        this.setOngoingPreviewing(true);
-
-        if (this.previewEl) return;
-        this.previewEl = this.buildPreview("ongoing", this.drag.taskId);
-        container.appendChild(this.previewEl);
-    }
-
-    private computeInsertIndex(
-        items: HTMLElement[],
-        y: number,
-        container: HTMLElement,
-        kind: DragKind,
-        movingDown: boolean
-    ): number {
-        if (this.drag.state          === "active"  &&
-            this.drag.startKind      === kind      &&
-            this.drag.startContainer === container &&
-            y >= this.drag.startRect.top           &&
-            y <= this.drag.startRect.bottom
-        ) {
-            return Math.max(0, Math.min(this.drag.startIndex, items.length));
-        }
-
-        if (movingDown) {
-            for (let i = 0; i < items.length; i++) {
-                const r = items[i].getBoundingClientRect();
-                if (y < r.top)    return i;
-                if (y < r.bottom) return i + 1;
-            }
-            return items.length;
-        }
-
-        for (let i = 0; i < items.length; i++) {
-            const r = items[i].getBoundingClientRect();
-            if (y <= r.bottom) return i;
-        }
-        return items.length;
-    }
-
-    private showGridPreview(
-        kind: "day" | "today",
-        box: HTMLElement,
-        pointerY: number,
-        movingDown: boolean
-    ): void {
-        if (this.drag.state !== "active") return;
-        const draggedId = this.drag.taskId;
-
-        const container = box.querySelector<HTMLElement>(".day-rows");
-        if (!container) return;
-
-        this.ensurePreview(kind, container);
-
-        const items = Array
-            .from(container.querySelectorAll<HTMLElement>(".task-row.filled"))
-            .filter((el) => Number(el.dataset.taskId) !== draggedId);
-
-        const idx = this.computeInsertIndex(items, pointerY, container, kind, movingDown);
-        if (idx === this.previewIndex) return;
-        this.previewIndex = idx;
-
-        const base = this.idsInGrid(container).filter((id) => id !== draggedId);
-        base.splice(Math.max(0, Math.min(idx, base.length)), 0, draggedId);
-
-        this.paintGrid(container, base, draggedId);
-    }
-
-    private showOngoingPreview(pointerY: number, movingDown: boolean): void {
-        if (this.drag.state !== "active") return;
-
-        const container = this.root.querySelector<HTMLElement>("#ongoing-list");
-        if (!container) return;
-
-        this.ensurePreview("ongoing", container);
-
-        const items = Array
-            .from(container.querySelectorAll<HTMLElement>(".ongoing-item"))
-            .filter((el) => !el.classList.contains("drag-preview"))
-            .filter((el) => !el.classList.contains("drag-source"));
-
-        const idx = this.computeInsertIndex(items, pointerY, container, "ongoing", movingDown);
-        if (idx === this.previewIndex) return;
-        this.previewIndex = idx;
-
-        const ref = items[idx] ?? null;
-        if (this.previewEl) container.insertBefore(this.previewEl, ref);
-    }
-
-    private orderFromDom(container: HTMLElement, selector: string, draggedId: number): number[] {
-        const els = Array.from(container.querySelectorAll<HTMLElement>(selector));
-        const ids: number[] = [];
-        const seen = new Set<number>();
-
-        for (const el of els) {
-            if (el.classList.contains("drag-source")) continue;
-            const id = Number(el.dataset.taskId);
-            if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
-            seen.add(id);
-            ids.push(id);
-        }
-
-        if (!seen.has(draggedId)) ids.push(draggedId);
-        return ids;
-    }
-
-    private beginDragFromPending(x: number, y: number): void {
-        if (this.drag.state !== "pending") return;
-
-        const task  = this.deps.state.visibleTaskById.get(this.drag.taskId);
-        const title = task?.title ?? `#${this.drag.taskId}`;
-
-        const ghost = this.root.createElement("div");
-        ghost.className   = "drag-ghost";
-        ghost.textContent = title;
-        this.root.body.appendChild(ghost);
-        this.updateGhostPosition(ghost, x, y);
-
-        const startRect = this.drag.sourceEl.getBoundingClientRect();
-
-        let startContainer: HTMLElement | null = null;
-        let startIndex = 0;
-
-        if (this.drag.kind !== "ongoing") {
-            startContainer = this.drag.sourceEl.closest<HTMLElement>(".day-rows");
-            if (startContainer) startIndex = this.indexOfFilledRow(startContainer, this.drag.sourceEl);
-        } else {
-            startContainer = this.root.querySelector<HTMLElement>("#ongoing-list");
-            if (startContainer) {
-                const items = Array.from(startContainer.querySelectorAll<HTMLElement>(".ongoing-item"));
-                const idx = items.indexOf(this.drag.sourceEl);
-                startIndex = idx < 0 ? 0 : idx;
-            }
-        }
-
-        this.drag.sourceEl.classList.add("drag-source");
-
-        if (this.drag.kind === "ongoing") {
-            this.drag.sourceEl.style.display = "none";
-        } else {
-            this.setRowEmpty(this.drag.sourceEl);
-        }
-
-        this.root.body.classList.add("dragging");
-
-        this.drag = {
-            state: "active",
-            taskId: this.drag.taskId,
-            kind: this.drag.kind,
-            pointerId: this.drag.pointerId,
-            sourceEl: this.drag.sourceEl,
-            ghostEl: ghost,
-            startRect,
-            startKind: this.drag.kind,
-            startContainer,
-            startIndex,
-            lastY: y,
-            movingDown: true,
-        };
-
-        if (this.drag.kind === "ongoing") {
-            this.setOngoingHover(true);
-            this.showOngoingPreview(y, true);
-        } else if (this.drag.kind === "today") {
-            const box = closestAtPoint<HTMLElement>(".today-box", x, y)
-                ?? this.drag.sourceEl.closest<HTMLElement>(".today-box");
-            if (!box) return;
-
-            this.setDayHover(box);
-            this.showGridPreview("today", box, y, true);
-        } else {
-            const box = this.drag.sourceEl.closest<HTMLElement>(".day-box");
-            if (!box) return;
-
-            this.setDayHover(box);
-            this.showGridPreview("day", box, y, true);
-        }
-    }
-
-    private cleanupDragVisuals(): void {
-        const prev  = this.drag;
-        const ghost = prev.state === "active" ? prev.ghostEl : null;
-
-        this.drag = { state: "idle" };
-
-        this.setDayHover(null);
-        this.setOngoingHover(false);
-        this.root.body.classList.remove("dragging");
-
-        if (ghost) ghost.remove();
-
-        this.resetPreview({ keepSourceHole: false, removePreviewEl: true });
-        this.deps.render();
-    }
-
-    private cancelDrag(): void {
-        this.cleanupDragVisuals();
-    }
-
-    async finishDrag(dropX: number, dropY: number): Promise<void> {
-        if (this.drag.state !== "active") return;
-
-        const dragCopy  = this.drag;
-        const draggedId = this.drag.taskId;
-
-        const ongoingHit = !!closestAtPoint<HTMLElement>("#ongoing-list", dropX, dropY);
-        const todayHit   = !!closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
-        const dayBox = ongoingHit ? null : closestAtPoint<HTMLElement>(".day-box", dropX, dropY);
-        const dropDateKey = dayBox?.dataset.dayDate ?? null;
-
-        let applyDbChange: (() => Promise<void>) | null = null;
-
-        if (ongoingHit) {
-            const list = this.root.querySelector<HTMLElement>("#ongoing-list");
-            if (list) {
-                const ids = this.orderFromDom(list, ".ongoing-item", draggedId);
-                if (ids.length) {
-                    applyDbChange = async () => {
-                        await this.deps.state.dbm.moveTask(draggedId, { kind: "ongoing" });
-                        await this.deps.state.dbm.setSortOrder(ids);
-                    };
-                }
-            }
-        } else if (todayHit) {
-            const box = closestAtPoint<HTMLElement>(".today-box", dropX, dropY);
-            const container = box?.querySelector<HTMLElement>(".day-rows");
-            if (container) {
-                const ids = this.orderFromDom(container, ".task-row.filled", draggedId);
-                if (ids.length) {
-                    applyDbChange = async () => {
-                        await this.deps.state.dbm.moveTask(draggedId, { kind: "today" });
-                        await this.deps.state.dbm.setSortOrder(ids);
-                    };
-                }
-            }
-        } else if (dropDateKey) {
-            const container = dayBox?.querySelector<HTMLElement>(".day-rows");
-            if (container) {
-                const ids = this.orderFromDom(container, ".task-row.filled", draggedId);
-                if (ids.length) {
-                    applyDbChange = async () => {
-                        await this.deps.state.dbm.moveTask(draggedId, { kind: "day", dateKey: dropDateKey as DateKey });
-                        await this.deps.state.dbm.setSortOrder(ids);
-                    };
-                }
-            }
-        }
-
-        if (!applyDbChange) {
-            this.cleanupDragVisuals();
-            return;
-        }
-
-        this.drag = { state: "idle" }
-
-        this.setDayHover(null);
-        this.setOngoingHover(false);
-
-        dragCopy.ghostEl.remove();
-        this.root.body.classList.remove("dragging");
-
-        this.baseIdsByContainer.clear();
-
-        try {
-            await applyDbChange();
-            await this.deps.refresh();
-        } catch (err) {
-            this.drag = dragCopy;
-            this.resetPreview({ keepSourceHole: false, removePreviewEl: true });
-            this.cleanupDragVisuals();
-            throw err;
-        }
+        this.engine.resetForRender();
     }
 }
