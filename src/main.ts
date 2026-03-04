@@ -24,6 +24,10 @@ async function refresh(): Promise<void> {
 
         state.visibleTaskById = data.visibleTaskById;
 
+        state.linkCollections      = data.linkCollections;
+        state.linksByCollectionId  = data.linksByCollectionId;
+        state.taskLinkMetaByTaskId = data.taskLinkMetaByTaskId;
+
         drag.resetForRender();
         renderAll(state);
     })

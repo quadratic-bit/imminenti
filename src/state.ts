@@ -1,5 +1,6 @@
 import { DBManager } from "./db";
 import { Task } from "./task";
+import type { LinkCollection, Link } from "./links";
 import { startOfWeek } from "./utils/date";
 
 export type AppState = {
@@ -12,6 +13,10 @@ export type AppState = {
     ongoingTasks: Task[];
 
     visibleTaskById: Map<number, Task>;
+
+    linkCollections:      LinkCollection[];
+    linksByCollectionId:  Map<number, Link[]>;
+    taskLinkMetaByTaskId: Map<number, { collectionIds: number[]; colors: string[] }>;
 
     suppressNextClick: boolean;
 };
@@ -27,6 +32,10 @@ export function createInitialState(now = new Date()): AppState {
         ongoingTasks: [],
 
         visibleTaskById: new Map(),
+
+        linkCollections: [],
+        linksByCollectionId:  new Map(),
+        taskLinkMetaByTaskId: new Map(),
 
         suppressNextClick: false,
     };
