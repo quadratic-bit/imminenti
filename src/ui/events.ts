@@ -7,6 +7,7 @@ import type { LinksModalController } from "../controllers/linksModal";
 import type { DragController } from "../controllers/drag";
 import type { LinkDragController } from "../controllers/linkDrag";
 import { renderAll } from "./all";
+import { openExternalUrl } from "../utils/openUrl";
 
 type Args = {
     state: AppState;
@@ -107,6 +108,22 @@ export function wireEvents({ state, modal, linksModal, drag, linkDrag, refresh, 
         if (editLink) {
             const lid = Number(editLink.dataset.linkId);
             if (Number.isFinite(lid) && lid > 0) linksModal.openEditLink(lid);
+            return;
+        }
+
+        const openLink = target.closest<HTMLElement>(".link-open-btn");
+        if (openLink) {
+            const lid = Number(openLink.dataset.linkId);
+            if (!Number.isFinite(lid) || lid <= 0) return;
+
+            let url: string | null = null;
+            for (const links of state.linksByCollectionId.values()) {
+                const l = links.find((x) => x.id === lid);
+                if (l) { url = l.url; break; }
+            }
+            if (!url) return;
+
+            void openExternalUrl(url).catch((err) => console.error(err));
             return;
         }
     });

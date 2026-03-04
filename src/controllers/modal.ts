@@ -2,6 +2,7 @@ import type { AppState } from "../state";
 import type { Location, Task } from "../task";
 import { qs, escapeHtml } from "../utils/dom";
 import { formatLongDate } from "../utils/date";
+import { openExternalUrl } from "../utils/openUrl";
 
 function numId(x: unknown): number | null {
     const n = Number(x);
@@ -55,6 +56,34 @@ export class ModalController {
         dialog.addEventListener("cancel", (e) => {
             e.preventDefault();
             this.close();
+        });
+
+        const linksBox = qs<HTMLDivElement>("#task-links-box", this.root);
+        linksBox.addEventListener("click", async (e) => {
+            const target = e.target as HTMLElement;
+
+            const btn = target.closest<HTMLElement>(".task-link-open-btn");
+            if (!btn) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const id = numId(btn.dataset.linkId);
+            if (!id) return;
+
+            let url: string | null = null;
+            for (const links of this.deps.state.linksByCollectionId.values()) {
+                const l = links.find((x) => x.id === id);
+                if (l) { url = l.url; break; }
+            }
+            if (!url) return;
+
+            try {
+                await openExternalUrl(url);
+            } catch (err) {
+                console.error(err);
+                alert("Open failed. Check console.");
+            }
         });
     }
 
@@ -285,13 +314,16 @@ export class ModalController {
                 : links.map((l) => {
                     const checked = selected.has(l.id) ? "checked" : "";
                     return `
+                      <div class="task-link-check-row">
                         <label class="task-link-check">
-                            <input type="checkbox" data-link-id="${l.id}" ${checked} />
-                            <div>
-                                <div class="task-link-check-title">${escapeHtml(l.title)}</div>
-                                <div class="task-link-check-url">${escapeHtml(shortUrl(l.url))}</div>
-                            </div>
+                          <input type="checkbox" data-link-id="${l.id}" ${checked} />
+                          <div>
+                            <div class="task-link-check-title">${escapeHtml(l.title)}</div>
+                            <div class="task-link-check-url">${escapeHtml(shortUrl(l.url))}</div>
+                          </div>
                         </label>
+                        <button type="button" class="btn tiny task-link-open-btn" data-link-id="${l.id}">Open</button>
+                      </div>
                     `;
                 }).join("");
 

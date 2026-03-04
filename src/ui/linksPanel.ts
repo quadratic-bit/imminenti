@@ -40,7 +40,10 @@ export function renderLinksPanel(state: AppState, root: Document = document): vo
                         <div class="link-title">${escapeHtml(l.title)}</div>
                         <div class="link-url">${escapeHtml(shortUrl(l.url))}</div>
                     </div>
-                    <button type="button" class="btn tiny link-edit-btn" data-link-id="${l.id}">Edit</button>
+                    <div class="link-actions">
+                        <button type="button" class="btn tiny link-open-btn" data-link-id="${l.id}">Open</button>
+                        <button type="button" class="btn tiny link-edit-btn" data-link-id="${l.id}">Edit</button>
+                    </div>
                 </div>
             `).join("");
 

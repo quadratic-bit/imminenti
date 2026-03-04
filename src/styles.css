@@ -873,3 +873,16 @@ body.dragging .link-item {
     color: var(--muted);
     overflow-wrap: anywhere;
 }
+
+.task-link-check-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.link-actions {
+    display: inline-flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}
