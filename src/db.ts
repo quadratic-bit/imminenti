@@ -447,4 +447,50 @@ export class DBManager {
         const db = await this.get();
         await db.execute(`DELETE FROM links WHERE id = ?`, [id]);
     }
+
+    async setCollectionOrder(ids: number[]): Promise<void> {
+        const db = await this.get();
+        await db.execute("BEGIN");
+        try {
+            for (let i = 0; i < ids.length; i++) {
+                await db.execute(
+                    `UPDATE link_collections SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    [i + 1, ids[i]]
+                );
+            }
+            await db.execute("COMMIT");
+        } catch (e) {
+            await db.execute("ROLLBACK");
+            throw e;
+        }
+    }
+
+    async setLinkOrder(collectionId: number, linkIds: number[]): Promise<void> {
+        const db = await this.get();
+        await db.execute("BEGIN");
+        try {
+            for (let i = 0; i < linkIds.length; i++) {
+                await db.execute(
+                    `UPDATE links SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND collection_id = ?`,
+                    [i + 1, linkIds[i], collectionId]
+                );
+            }
+            await db.execute("COMMIT");
+        } catch (e) {
+            await db.execute("ROLLBACK");
+            throw e;
+        }
+    }
+
+    async moveLinkToCollection(linkId: number, toCollectionId: number): Promise<void> {
+        const db = await this.get();
+        await db.execute(
+            `
+            UPDATE links
+            SET collection_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
+            [toCollectionId, linkId]
+        );
+    }
 }

@@ -6,11 +6,18 @@ import { wireEvents } from "./ui/events";
 import { ModalController } from "./controllers/modal";
 import { LinksModalController } from "./controllers/linksModal";
 import { DragController } from "./controllers/drag";
+import { LinkDragController } from "./controllers/linkDrag";
 
 const modal = new ModalController({ state, refresh });
 const linksModal = new LinksModalController({ state, refresh });
 
 const drag = new DragController({
+    state,
+    refresh,
+    render: () => renderAll(state),
+});
+
+const linkDrag = new LinkDragController({
     state,
     refresh,
     render: () => renderAll(state),
@@ -31,6 +38,7 @@ async function refresh(): Promise<void> {
         state.taskLinkMetaByTaskId = data.taskLinkMetaByTaskId;
 
         drag.resetForRender();
+        linkDrag.resetForRender();
         renderAll(state);
     })
     .catch(err => {
@@ -40,6 +48,7 @@ async function refresh(): Promise<void> {
         const list = document.querySelector<HTMLDivElement>("#ongoing-list");
 
         drag.resetForRender();
+        linkDrag.resetForRender();
 
         if (grid) grid.innerHTML = `<div class="error-box">Failed to load data.</div>`;
         if (list) list.innerHTML = `<div class="error-box">Failed to load data.</div>`;
@@ -47,7 +56,7 @@ async function refresh(): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
-    wireEvents({ state, modal, linksModal, drag, refresh });
+    wireEvents({ state, modal, linksModal, drag, linkDrag, refresh });
 
     const weekGrid    = document.querySelector<HTMLDivElement>("#week-grid");
     const ongoingList = document.querySelector<HTMLDivElement>("#ongoing-list");

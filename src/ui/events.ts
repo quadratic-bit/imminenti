@@ -5,6 +5,7 @@ import { isTypingTarget, qs } from "../utils/dom";
 import type { ModalController } from "../controllers/modal";
 import type { LinksModalController } from "../controllers/linksModal";
 import type { DragController } from "../controllers/drag";
+import type { LinkDragController } from "../controllers/linkDrag";
 import { renderAll } from "./all";
 
 type Args = {
@@ -12,14 +13,16 @@ type Args = {
     modal: ModalController;
     linksModal: LinksModalController;
     drag: DragController;
+    linkDrag: LinkDragController;
     refresh: () => Promise<void>;
     root?: Document;
 };
 
-export function wireEvents({ state, modal, linksModal, drag, refresh, root = document }: Args): void {
+export function wireEvents({ state, modal, linksModal, drag, linkDrag, refresh, root = document }: Args): void {
     modal.attach();
     linksModal.attach();
     drag.attach();
+    linkDrag.attach();
 
     qs<HTMLButtonElement>("#prev-week-btn", root).addEventListener("click", async () => {
         state.currentWeekStart = addDays(state.currentWeekStart, -7);

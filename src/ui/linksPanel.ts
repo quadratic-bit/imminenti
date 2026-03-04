@@ -54,7 +54,7 @@ export function renderLinksPanel(state: AppState, root: Document = document): vo
                         <button type="button" class="btn tiny collection-edit-btn" data-collection-id="${c.id}">Edit</button>
                     </div>
                 </div>
-                <div class="links-list">
+                <div class="links-list" data-collection-id="${c.id}">
                     ${linksHtml}
                 </div>
             </div>

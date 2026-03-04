@@ -764,3 +764,36 @@ textarea {
 .link-url {
     min-width: 0;
 }
+
+.collection-item,
+.link-item {
+    cursor: grab;
+}
+
+body.dragging .collection-item,
+body.dragging .link-item {
+    cursor: grabbing;
+}
+
+.links-panel.drop-hover-links-panel {
+    box-shadow: var(--ring-drop);
+    border-radius: 10px;
+}
+
+.collection-item.drop-hover-collection {
+    outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    outline-offset: 0px;
+}
+
+.links-list.drop-hover-links-list {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+    border-radius: 10px;
+}
+
+.collection-item.drag-preview,
+.link-item.drag-preview {
+    pointer-events: none;
+    opacity: 0.92;
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+}
