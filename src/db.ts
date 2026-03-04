@@ -1,5 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
 import { Task, DateKey, Location } from "./task";
+import type { LinkCollection, Link } from "./links";
 
 type SqlDb = Awaited<ReturnType<typeof Database.load>>;
 
@@ -38,11 +39,50 @@ const toTask = (r: TaskRow): Task => {
     }
 };
 
+type LinkCollectionRow = {
+    id:         number;
+    name:       string;
+    color:      string;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+};
+
+type LinkRow = {
+    id:            number;
+    collection_id: number;
+    title:         string;
+    url:           string;
+    sort_order:    number;
+    created_at:    string;
+    updated_at:    string;
+};
+
+const toLinkCollection = (r: LinkCollectionRow): LinkCollection => ({
+    id: r.id,
+    name: r.name,
+    color: r.color,
+    sort_order: r.sort_order,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+});
+
+const toLink = (r: LinkRow): Link => ({
+    id: r.id,
+    collection_id: r.collection_id,
+    title: r.title,
+    url: r.url,
+    sort_order: r.sort_order,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+});
+
 export class DBManager {
     private promise: Promise<SqlDb> | null = null;
 
     private async init(): Promise<SqlDb> {
         const db = await Database.load("sqlite:imminenti.db");
+        await db.execute(`PRAGMA foreign_keys = ON`);
 
         await db.execute(`
             CREATE TABLE IF NOT EXISTS tasks (
@@ -74,6 +114,61 @@ export class DBManager {
         await db.execute(`
             CREATE INDEX IF NOT EXISTS idx_tasks_today
             ON tasks(is_today)
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS link_collections (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL,
+                color      TEXT    NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS links (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                collection_id INTEGER NOT NULL,
+                title         TEXT    NOT NULL,
+                url           TEXT    NOT NULL,
+                sort_order    INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at    TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (collection_id) REFERENCES link_collections(id) ON DELETE CASCADE
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS task_links (
+                task_id   INTEGER NOT NULL,
+                link_id   INTEGER NOT NULL,
+                created_at TEXT   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (task_id, link_id),
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (link_id) REFERENCES links(id) ON DELETE CASCADE
+            )
+        `);
+
+        await db.execute(`
+            CREATE INDEX IF NOT EXISTS idx_link_collections_sort
+            ON link_collections(sort_order, id)
+        `);
+
+        await db.execute(`
+            CREATE INDEX IF NOT EXISTS idx_links_collection_sort
+            ON links(collection_id, sort_order, id)
+        `);
+
+        await db.execute(`
+            CREATE INDEX IF NOT EXISTS idx_task_links_task
+            ON task_links(task_id)
+        `);
+
+        await db.execute(`
+            CREATE INDEX IF NOT EXISTS idx_task_links_link
+            ON task_links(link_id)
         `);
 
         return db;
@@ -174,5 +269,31 @@ export class DBManager {
     async deleteTask(taskId: number): Promise<void> {
         const db = await this.get();
         await db.execute(`DELETE FROM tasks WHERE id = ?`, [taskId]);
+    }
+
+    async getCollections(): Promise<LinkCollection[]> {
+        const db = await this.get();
+        const rows = await db.select<LinkCollectionRow[]>(`
+            SELECT id, name, color, sort_order, created_at, updated_at
+            FROM link_collections
+            ORDER BY sort_order ASC, id ASC
+        `);
+        return rows.map(toLinkCollection);
+    }
+
+    async getLinksForCollections(collectionIds: number[]): Promise<Link[]> {
+        if (collectionIds.length === 0) return [];
+        const db = await this.get();
+        const placeholders = collectionIds.map(() => "?").join(",");
+        const rows = await db.select<LinkRow[]>(
+            `
+            SELECT id, collection_id, title, url, sort_order, created_at, updated_at
+            FROM links
+            WHERE collection_id IN (${placeholders})
+            ORDER BY collection_id ASC, sort_order ASC, id ASC
+            `,
+            collectionIds
+        );
+        return rows.map(toLink);
     }
 }
