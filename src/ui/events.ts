@@ -4,6 +4,7 @@ import { addDays } from "../utils/date";
 import { isTypingTarget, qs } from "../utils/dom";
 import type { ModalController } from "../controllers/modal";
 import type { DragController } from "../controllers/drag";
+import { renderAll } from "./all";
 
 type Args = {
     state: AppState;
@@ -27,6 +28,15 @@ export function wireEvents({ state, modal, drag, refresh, root = document }: Arg
         await refresh();
     });
 
+    qs<HTMLButtonElement>("#tab-ongoing-btn", root).addEventListener("click", () => {
+        state.rightPanelTab = "ongoing";
+        renderAll(state, root);
+    });
+
+    qs<HTMLButtonElement>("#tab-links-btn", root).addEventListener("click", () => {
+        state.rightPanelTab = "links";
+        renderAll(state, root);
+    });
 
     qs<HTMLButtonElement>("#add-ongoing-btn", root).addEventListener("click", () => {
         modal.openCreate({ kind: "ongoing" });

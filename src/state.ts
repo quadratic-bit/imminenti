@@ -18,6 +18,8 @@ export type AppState = {
     linksByCollectionId:  Map<number, Link[]>;
     taskLinkMetaByTaskId: Map<number, { collectionIds: number[]; colors: string[] }>;
 
+    rightPanelTab: "ongoing" | "links";
+
     suppressNextClick: boolean;
 };
 
@@ -36,6 +38,8 @@ export function createInitialState(now = new Date()): AppState {
         linkCollections: [],
         linksByCollectionId:  new Map(),
         taskLinkMetaByTaskId: new Map(),
+
+        rightPanelTab: "ongoing",
 
         suppressNextClick: false,
     };

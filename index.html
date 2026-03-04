@@ -27,12 +27,21 @@
       <aside class="right-panel">
         <header class="panel-header tight">
           <div>
-            <h2>Ongoing</h2>
-            <div class="subtle">Subtitle</div>
+            <div class="right-tabs">
+              <button id="tab-ongoing-btn" class="tab active" type="button">Ongoing</button>
+              <button id="tab-links-btn" class="tab" type="button">Links</button>
+            </div>
+            <div id="right-subtitle" class="subtle">Subtitle</div>
           </div>
-          <button id="add-ongoing-btn" class="btn primary" type="button">Add</button>
+
+          <div class="header-actions">
+            <button id="add-ongoing-btn" class="btn primary" type="button">Add</button>
+            <button id="add-collection-btn" class="btn primary" type="button" hidden>Add collection</button>
+          </div>
         </header>
+
         <div id="ongoing-list" class="ongoing-list"></div>
+        <div id="links-panel" class="links-panel" hidden></div>
       </aside>
     </main>
 
