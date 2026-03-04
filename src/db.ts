@@ -77,6 +77,19 @@ const toLink = (r: LinkRow): Link => ({
     updated_at: r.updated_at,
 });
 
+export type TaskLinkJoinRow = {
+    task_id: number;
+
+    collection_id:         number;
+    collection_color:      string;
+    collection_sort_order: number;
+
+    link_id:         number;
+    link_title:      string;
+    link_url:        string;
+    link_sort_order: number;
+};
+
 export class DBManager {
     private promise: Promise<SqlDb> | null = null;
 
@@ -295,5 +308,64 @@ export class DBManager {
             collectionIds
         );
         return rows.map(toLink);
+    }
+
+    async setTaskLinks(taskId: number, linkIds: number[]): Promise<void> {
+        const db = await this.get();
+
+        const seen = new Set<number>();
+        const ids: number[] = [];
+        for (const id of linkIds) {
+            if (!Number.isFinite(id) || id <= 0) continue;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            ids.push(id);
+        }
+
+        await db.execute("BEGIN");
+        try {
+            await db.execute(`DELETE FROM task_links WHERE task_id = ?`, [taskId]);
+            for (const linkId of ids) {
+                await db.execute(
+                    `INSERT INTO task_links (task_id, link_id) VALUES (?, ?)`,
+                    [taskId, linkId]
+                );
+            }
+            await db.execute("COMMIT");
+        } catch (e) {
+            await db.execute("ROLLBACK");
+            throw e;
+        }
+    }
+
+    async getTaskLinkJoinRowsForTasks(taskIds: number[]): Promise<TaskLinkJoinRow[]> {
+        if (taskIds.length === 0) return [];
+        const db = await this.get();
+        const placeholders = taskIds.map(() => "?").join(",");
+
+        return await db.select<TaskLinkJoinRow[]>(
+            `
+            SELECT
+                tl.task_id    AS task_id,
+                lc.id         AS collection_id,
+                lc.color      AS collection_color,
+                lc.sort_order AS collection_sort_order,
+                l.id          AS link_id,
+                l.title       AS link_title,
+                l.url         AS link_url,
+                l.sort_order  AS link_sort_order
+            FROM task_links tl
+            JOIN links            l  ON l.id  = tl.link_id
+            JOIN link_collections lc ON lc.id = l.collection_id
+            WHERE tl.task_id IN (${placeholders})
+            ORDER BY
+                tl.task_id    ASC,
+                lc.sort_order ASC,
+                lc.id         ASC,
+                l.sort_order  ASC,
+                l.id          ASC
+            `,
+            taskIds
+        );
     }
 }
