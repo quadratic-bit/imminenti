@@ -3,19 +3,22 @@ import type { DateKey } from "../task";
 import { addDays } from "../utils/date";
 import { isTypingTarget, qs } from "../utils/dom";
 import type { ModalController } from "../controllers/modal";
+import type { LinksModalController } from "../controllers/linksModal";
 import type { DragController } from "../controllers/drag";
 import { renderAll } from "./all";
 
 type Args = {
     state: AppState;
     modal: ModalController;
+    linksModal: LinksModalController;
     drag: DragController;
     refresh: () => Promise<void>;
     root?: Document;
 };
 
-export function wireEvents({ state, modal, drag, refresh, root = document }: Args): void {
+export function wireEvents({ state, modal, linksModal, drag, refresh, root = document }: Args): void {
     modal.attach();
+    linksModal.attach();
     drag.attach();
 
     qs<HTMLButtonElement>("#prev-week-btn", root).addEventListener("click", async () => {
@@ -40,6 +43,10 @@ export function wireEvents({ state, modal, drag, refresh, root = document }: Arg
 
     qs<HTMLButtonElement>("#add-ongoing-btn", root).addEventListener("click", () => {
         modal.openCreate({ kind: "ongoing" });
+    });
+
+    qs<HTMLButtonElement>("#add-collection-btn", root).addEventListener("click", () => {
+        linksModal.openCreateCollection();
     });
 
     qs<HTMLButtonElement>("#ongoing-list", root).addEventListener("click", (e) => {
@@ -73,6 +80,31 @@ export function wireEvents({ state, modal, drag, refresh, root = document }: Arg
         if (dayBox) {
             const dateKey = dayBox.dataset.dayDate as DateKey | undefined;
             if (dateKey) modal.openCreate({ kind: "day", dateKey });
+        }
+    });
+
+    qs<HTMLDivElement>("#links-panel", root).addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+
+        const addLink = target.closest<HTMLElement>(".collection-add-link-btn");
+        if (addLink) {
+            const cid = Number(addLink.dataset.collectionId);
+            if (Number.isFinite(cid) && cid > 0) linksModal.openCreateLink(cid);
+            return;
+        }
+
+        const editCol = target.closest<HTMLElement>(".collection-edit-btn");
+        if (editCol) {
+            const cid = Number(editCol.dataset.collectionId);
+            if (Number.isFinite(cid) && cid > 0) linksModal.openEditCollection(cid);
+            return;
+        }
+
+        const editLink = target.closest<HTMLElement>(".link-edit-btn");
+        if (editLink) {
+            const lid = Number(editLink.dataset.linkId);
+            if (Number.isFinite(lid) && lid > 0) linksModal.openEditLink(lid);
+            return;
         }
     });
 

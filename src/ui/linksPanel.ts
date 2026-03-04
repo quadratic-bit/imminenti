@@ -36,8 +36,11 @@ export function renderLinksPanel(state: AppState, root: Document = document): vo
             ? `<div class="links-empty">No links.</div>`
             : links.map((l) => `
                 <div class="link-item" data-link-id="${l.id}" data-collection-id="${c.id}">
-                    <div class="link-title">${escapeHtml(l.title)}</div>
-                    <div class="link-url">${escapeHtml(shortUrl(l.url))}</div>
+                    <div class="link-main">
+                        <div class="link-title">${escapeHtml(l.title)}</div>
+                        <div class="link-url">${escapeHtml(shortUrl(l.url))}</div>
+                    </div>
+                    <button type="button" class="btn tiny link-edit-btn" data-link-id="${l.id}">Edit</button>
                 </div>
             `).join("");
 
@@ -46,6 +49,10 @@ export function renderLinksPanel(state: AppState, root: Document = document): vo
                 <div class="collection-head">
                     <div class="collection-swatch" style="background:${color};"></div>
                     <div class="collection-name">${escapeHtml(c.name)}</div>
+                    <div class="collection-actions">
+                        <button type="button" class="btn tiny collection-add-link-btn" data-collection-id="${c.id}">Add link</button>
+                        <button type="button" class="btn tiny collection-edit-btn" data-collection-id="${c.id}">Edit</button>
+                    </div>
                 </div>
                 <div class="links-list">
                     ${linksHtml}

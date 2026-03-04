@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { Task, DateKey, Location } from "./task";
 import type { LinkCollection, Link } from "./links";
+import { assertHexColor, normalizeUrl } from "./utils/validate";
 
 type SqlDb = Awaited<ReturnType<typeof Database.load>>;
 
@@ -367,5 +368,83 @@ export class DBManager {
             `,
             taskIds
         );
+    }
+
+    async createCollection(name: string, color: string): Promise<void> {
+        const db = await this.get();
+        const n = name.trim();
+        if (!n) throw new Error("Collection name is required.");
+        const c = assertHexColor(color);
+
+        await db.execute(
+            `
+            INSERT INTO link_collections (name, color, sort_order)
+            VALUES (
+                ?, ?,
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM link_collections)
+            )
+            `,
+            [n, c]
+        );
+    }
+
+    async updateCollection(id: number, name: string, color: string): Promise<void> {
+        const db = await this.get();
+        const n = name.trim();
+        if (!n) throw new Error("Collection name is required.");
+        const c = assertHexColor(color);
+
+        await db.execute(
+            `
+            UPDATE link_collections
+            SET name = ?, color = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
+            [n, c, id]
+        );
+    }
+
+    async deleteCollection(id: number): Promise<void> {
+        const db = await this.get();
+        await db.execute(`DELETE FROM link_collections WHERE id = ?`, [id]);
+    }
+
+    async createLink(collectionId: number, title: string, url: string): Promise<void> {
+        const db = await this.get();
+        const t = title.trim();
+        if (!t) throw new Error("Link title is required.");
+        const u = normalizeUrl(url);
+
+        await db.execute(
+            `
+            INSERT INTO links (collection_id, title, url, sort_order)
+            VALUES (
+                ?, ?, ?,
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM links WHERE collection_id = ?)
+            )
+            `,
+            [collectionId, t, u, collectionId]
+        );
+    }
+
+    async updateLink(id: number, title: string, url: string): Promise<void> {
+        const db = await this.get();
+        const t = title.trim();
+        if (!t) throw new Error("Link title is required.");
+        const u = normalizeUrl(url);
+
+        await db.execute(
+            `
+            UPDATE links
+            SET title = ?, url = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
+            [t, u, id]
+        );
+    }
+
+    async deleteLink(id: number): Promise<void> {
+        const db = await this.get();
+        await db.execute(`DELETE FROM links WHERE id = ?`, [id]);
     }
 }

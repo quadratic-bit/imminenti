@@ -736,3 +736,31 @@ textarea {
     padding: 10px;
     background: var(--panel-2);
 }
+
+.btn.tiny {
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+}
+
+.collection-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 8px;
+}
+
+.link-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.link-main {
+    min-width: 0;
+}
+
+.link-title,
+.link-url {
+    min-width: 0;
+}

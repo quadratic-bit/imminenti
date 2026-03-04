@@ -4,9 +4,11 @@ import { fetchViewTasks } from "./data/viewTasks";
 import { renderAll } from "./ui/all";
 import { wireEvents } from "./ui/events";
 import { ModalController } from "./controllers/modal";
+import { LinksModalController } from "./controllers/linksModal";
 import { DragController } from "./controllers/drag";
 
 const modal = new ModalController({ state, refresh });
+const linksModal = new LinksModalController({ state, refresh });
 
 const drag = new DragController({
     state,
@@ -45,7 +47,7 @@ async function refresh(): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
-    wireEvents({ state, modal, drag, refresh });
+    wireEvents({ state, modal, linksModal, drag, refresh });
 
     const weekGrid    = document.querySelector<HTMLDivElement>("#week-grid");
     const ongoingList = document.querySelector<HTMLDivElement>("#ongoing-list");

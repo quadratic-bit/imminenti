@@ -74,5 +74,39 @@
         </div>
       </form>
     </dialog>
+    <dialog id="links-dialog" class="task-dialog">
+      <form id="links-form" method="dialog" class="dialog-body">
+        <h3 id="links-dialog-title">Links</h3>
+        <div id="links-dialog-context" class="dialog-context"></div>
+
+        <label id="lc-name-field" class="field">
+          <span>Name</span>
+          <input id="lc-name-input" type="text" maxlength="200" />
+        </label>
+
+        <label id="lc-color-field" class="field">
+          <span>Color (hex)</span>
+          <input id="lc-color-input" type="text" maxlength="9" placeholder="#RRGGBB" />
+        </label>
+
+        <label id="l-title-field" class="field">
+          <span>Title</span>
+          <input id="l-title-input" type="text" maxlength="200" />
+        </label>
+
+        <label id="l-url-field" class="field">
+          <span>URL</span>
+          <input id="l-url-input" type="text" maxlength="2000" placeholder="https://…" />
+        </label>
+
+        <div class="dialog-actions">
+          <button id="links-delete-btn" class="btn danger" type="button">Delete</button>
+          <div class="dialog-actions-right">
+            <button id="links-cancel-btn" class="btn" type="button">Cancel</button>
+            <button id="links-save-btn" class="btn primary" type="submit">Save</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>
