@@ -668,6 +668,77 @@ textarea {
     color: var(--text);
 }
 
+/* Collections modal */
+.collections-dialog {
+    width: min(860px, calc(100vw - 24px));
+}
+
+.collections-browser {
+    display: grid;
+    gap: 10px;
+}
+
+.collections-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.collection-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--surface-0);
+    background: var(--panel-2);
+    cursor: pointer;
+}
+
+.collection-pill:hover {
+    background: color-mix(in srgb, var(--panel-2) 80%, var(--surface-0) 20%);
+}
+
+.collection-pill.active {
+    border-color: var(--accent);
+    box-shadow: var(--ring-hover);
+}
+
+.collection-pill-name {
+    font-size: 0.84rem;
+    font-weight: 650;
+    min-width: 0;
+}
+
+.collection-links {
+    display: grid;
+    gap: 10px;
+    min-height: 0;
+}
+
+.collection-detail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+}
+
+.collection-detail-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.drop-hover-collections-list {
+    box-shadow: var(--ring-drop);
+    border-radius: 10px;
+}
+
 .links-panel {
     min-height: 0;
     overflow: auto;

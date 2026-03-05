@@ -4,12 +4,14 @@ import { fetchViewTasks } from "./data/viewTasks";
 import { renderAll } from "./ui/all";
 import { wireEvents } from "./ui/events";
 import { ModalController } from "./controllers/modal";
-import { LinksModalController } from "./controllers/linksModal";
+import { CollectionsModalController } from "./controllers/collectionsModal";
+import { LinkModalController } from "./controllers/linkModal";
 import { DragController } from "./controllers/drag";
 import { LinkDragController } from "./controllers/linkDrag";
 
 const modal = new ModalController({ state, refresh });
-const linksModal = new LinksModalController({ state, refresh });
+const linkModal = new LinkModalController({ state, refresh });
+const collectionsModal = new CollectionsModalController({ state, refresh, linkModal });
 
 const drag = new DragController({
     state,
@@ -41,6 +43,8 @@ async function refresh(): Promise<void> {
         drag.resetForRender();
         linkDrag.resetForRender();
         renderAll(state);
+        collectionsModal.renderIfOpen();
+        linkModal.renderIfOpen();
     })
     .catch(err => {
         console.error(err);
@@ -57,7 +61,7 @@ async function refresh(): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
-    wireEvents({ state, modal, linksModal, drag, linkDrag, refresh });
+    wireEvents({ state, modal, collectionsModal, linkModal, drag, linkDrag, refresh });
 
     const weekGrid    = document.querySelector<HTMLDivElement>("#week-grid");
     const ongoingList = document.querySelector<HTMLDivElement>("#ongoing-list");

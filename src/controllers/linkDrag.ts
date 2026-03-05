@@ -53,21 +53,21 @@ function makeCollectionAdapter(state: AppState, root: Document): OrderedDragAdap
     let previewEl: HTMLElement | null = null;
     let previewList: HTMLElement | null = null;
 
-    const listEl = () => root.querySelector<HTMLElement>("#links-panel");
+    const listEl = () => root.querySelector<HTMLElement>("#collections-list");
 
     const setHover = (on: boolean) => {
         const el = listEl();
         if (!el) return;
-        el.classList.toggle("drop-hover-links-panel", on);
+        el.classList.toggle("drop-hover-collections-list", on);
     };
 
     return {
         pick(target) {
             if (target.closest(".btn")) return null;
-            const head = target.closest<HTMLElement>(".collection-head");
+            const head = target.closest<HTMLElement>(".collection-pill");
             if (!head) return null;
 
-            const item = head.closest<HTMLElement>(".collection-item");
+            const item = head.closest<HTMLElement>(".collection-pill");
             if (!item) return null;
 
             const id = numId(item.dataset.collectionId);
@@ -77,7 +77,7 @@ function makeCollectionAdapter(state: AppState, root: Document): OrderedDragAdap
         },
 
         hitTest(x, y) {
-            const panel = closestAtPoint<HTMLElement>("#links-panel", x, y);
+            const panel = closestAtPoint<HTMLElement>("#collections-list", x, y);
             if (!panel) return null;
 
             const at = document.elementFromPoint(x, y) as HTMLElement | null;
@@ -87,25 +87,25 @@ function makeCollectionAdapter(state: AppState, root: Document): OrderedDragAdap
         },
 
         startHit(pick) {
-            const panel = pick.sourceEl.closest<HTMLElement>("#links-panel") ?? listEl();
+            const panel = pick.sourceEl.closest<HTMLElement>("#collections-list") ?? listEl();
             if (!panel) return null;
             return { kind: "collection", dropZoneEl: panel, listEl: panel, meta: {} };
         },
 
         sourceIndex(hit, sourceEl) {
-            const items = Array.from(hit.listEl.querySelectorAll<HTMLElement>(".collection-item"));
+            const items = Array.from(hit.listEl.querySelectorAll<HTMLElement>(".collection-pill"));
             const idx = items.indexOf(sourceEl);
             return idx < 0 ? 0 : idx;
         },
 
         itemsForInsert(hit) {
-            return Array.from(hit.listEl.querySelectorAll<HTMLElement>(".collection-item"))
+            return Array.from(hit.listEl.querySelectorAll<HTMLElement>(".collection-pill"))
                 .filter((el) => !el.classList.contains("drag-preview"))
                 .filter((el) => !el.classList.contains("drag-source"));
         },
 
         idsInList(listEl) {
-            return Array.from(listEl.querySelectorAll<HTMLElement>(".collection-item"))
+            return Array.from(listEl.querySelectorAll<HTMLElement>(".collection-pill"))
                 .filter((el) => !el.classList.contains("drag-preview"))
                 .filter((el) => !el.classList.contains("drag-source"))
                 .map((el) => numId(el.dataset.collectionId))
@@ -148,7 +148,7 @@ function makeCollectionAdapter(state: AppState, root: Document): OrderedDragAdap
             this.clearPreviewDom();
 
             const byId = new Map<number, HTMLElement>();
-            for (const el of Array.from(listEl.querySelectorAll<HTMLElement>(".collection-item"))) {
+            for (const el of Array.from(listEl.querySelectorAll<HTMLElement>(".collection-pill"))) {
                 const id = numId(el.dataset.collectionId);
                 if (id) byId.set(id, el);
             }
@@ -160,7 +160,7 @@ function makeCollectionAdapter(state: AppState, root: Document): OrderedDragAdap
         },
 
         orderFromDom(listEl, draggedId) {
-            return orderIdsFromDom(listEl, ".collection-item", "collectionId", draggedId);
+            return orderIdsFromDom(listEl, ".collection-pill", "collectionId", draggedId);
         },
 
         setHover(hit) {
@@ -189,7 +189,7 @@ function makeLinkAdapter(state: AppState, _root: Document): OrderedDragAdapter<K
     const setHover = (list: HTMLElement | null) => {
         if (hoveredList && hoveredList !== list) {
             hoveredList.classList.remove("drop-hover-links-list");
-            const prevCol = hoveredList.closest<HTMLElement>(".collection-item");
+            const prevCol = hoveredList.closest<HTMLElement>(".collection-pill");
             prevCol?.classList.remove("drop-hover-collection");
         }
 
@@ -197,7 +197,7 @@ function makeLinkAdapter(state: AppState, _root: Document): OrderedDragAdapter<K
 
         if (hoveredList) {
             hoveredList.classList.add("drop-hover-links-list");
-            const col = hoveredList.closest<HTMLElement>(".collection-item");
+            const col = hoveredList.closest<HTMLElement>(".collection-pill");
             col?.classList.add("drop-hover-collection");
         }
     };
@@ -207,7 +207,7 @@ function makeLinkAdapter(state: AppState, _root: Document): OrderedDragAdapter<K
         if (!list) return null;
         const cid = numId(list.dataset.collectionId) ?? null;
         if (!cid) return null;
-        const col = list.closest<HTMLElement>(".collection-item") ?? list;
+        const col = list.closest<HTMLElement>(".collection-pill") ?? list;
         return { kind: "link", dropZoneEl: col, listEl: list, meta: { collectionId: cid } };
     }
 
@@ -231,7 +231,7 @@ function makeLinkAdapter(state: AppState, _root: Document): OrderedDragAdapter<K
             const list = pick.sourceEl.closest<HTMLElement>(".links-list");
             const cid = numId(list?.dataset.collectionId) ?? null;
             if (!list || !cid) return null;
-            const col = list.closest<HTMLElement>(".collection-item") ?? list;
+            const col = list.closest<HTMLElement>(".collection-pill") ?? list;
             return { kind: "link", dropZoneEl: col, listEl: list, meta: { collectionId: cid } };
         },
 
@@ -330,7 +330,9 @@ export class LinkDragController {
         this.root = deps.root ?? document;
 
         const swallow = [
-            this.root.querySelector<HTMLElement>("#links-panel"),
+            this.root.querySelector<HTMLElement>("#collections-dialog"),
+            this.root.querySelector<HTMLElement>("#collections-list"),
+            this.root.querySelector<HTMLElement>("#collection-links"),
         ].filter((x): x is HTMLElement => !!x);
 
         this.collectionsEngine = new OrderedDragController<Kind, Meta>({

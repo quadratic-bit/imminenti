@@ -18,6 +18,7 @@
           <div class="header-actions">
             <button id="prev-week-btn" class="btn" type="button" title="Previous week">Prev</button>
             <button id="next-week-btn" class="btn" type="button" title="Next week">Next</button>
+            <button id="open-links-btn" class="btn" type="button" title="Links">Links</button>
           </div>
         </header>
 
@@ -25,23 +26,17 @@
       </section>
 
       <aside class="right-panel">
-        <header class="panel-header tight">
+        <header class="panel-header">
           <div>
-            <div class="right-tabs">
-              <button id="tab-ongoing-btn" class="tab active" type="button">Ongoing</button>
-              <button id="tab-links-btn" class="tab" type="button">Links</button>
-            </div>
-            <div id="right-subtitle" class="subtle">Subtitle</div>
+            <h2>Ongoing</h2>
           </div>
 
           <div class="header-actions">
             <button id="add-ongoing-btn" class="btn primary" type="button">Add</button>
-            <button id="add-collection-btn" class="btn primary" type="button" hidden>Add collection</button>
           </div>
         </header>
 
         <div id="ongoing-list" class="ongoing-list"></div>
-        <div id="links-panel" class="links-panel" hidden></div>
       </aside>
     </main>
 
@@ -79,39 +74,69 @@
         </div>
       </form>
     </dialog>
-    <dialog id="links-dialog" class="task-dialog">
-      <form id="links-form" method="dialog" class="dialog-body">
-        <h3 id="links-dialog-title">Links</h3>
-        <div id="links-dialog-context" class="dialog-context"></div>
+  </body>
 
-        <label id="lc-name-field" class="field">
+  <dialog id="collections-dialog" class="task-dialog collections-dialog">
+    <form id="collections-form" method="dialog" class="dialog-body">
+      <h3 id="collections-dialog-title">Links</h3>
+      <div id="collections-dialog-context" class="dialog-context"></div>
+
+      <section id="collections-browser" class="collections-browser">
+        <div class="dialog-actions">
+          <button id="collections-add-btn" class="btn primary" type="button">Add collection</button>
+          <div class="dialog-actions-right">
+            <button id="collections-close-btn" class="btn" type="button">Close</button>
+          </div>
+        </div>
+
+        <div id="collections-list" class="collections-list"></div>
+        <div id="collection-links" class="collection-links"></div>
+      </section>
+
+      <section id="collections-editor" class="collections-editor" hidden>
+        <label class="field">
           <span>Name</span>
-          <input id="lc-name-input" type="text" maxlength="200" />
+          <input id="collection-name-input" type="text" maxlength="200" />
         </label>
 
-        <label id="lc-color-field" class="field">
+        <label class="field">
           <span>Color (hex)</span>
-          <input id="lc-color-input" type="text" maxlength="9" placeholder="#RRGGBB" />
-        </label>
-
-        <label id="l-title-field" class="field">
-          <span>Title</span>
-          <input id="l-title-input" type="text" maxlength="200" />
-        </label>
-
-        <label id="l-url-field" class="field">
-          <span>URL</span>
-          <input id="l-url-input" type="text" maxlength="2000" placeholder="https://…" />
+          <input id="collection-color-input" type="text" maxlength="9" placeholder="#RRGGBB" />
         </label>
 
         <div class="dialog-actions">
-          <button id="links-delete-btn" class="btn danger" type="button">Delete</button>
+          <button id="collection-delete-btn" class="btn danger" type="button">Delete</button>
           <div class="dialog-actions-right">
-            <button id="links-cancel-btn" class="btn" type="button">Cancel</button>
-            <button id="links-save-btn" class="btn primary" type="submit">Save</button>
+            <button id="collection-cancel-btn" class="btn" type="button">Cancel</button>
+            <button id="collection-save-btn" class="btn primary" type="submit">Save</button>
           </div>
         </div>
-      </form>
-    </dialog>
-  </body>
+      </section>
+    </form>
+  </dialog>
+
+  <dialog id="link-dialog" class="task-dialog">
+    <form id="link-form" method="dialog" class="dialog-body">
+      <h3 id="link-dialog-title">Link</h3>
+      <div id="link-dialog-context" class="dialog-context"></div>
+
+      <label class="field">
+        <span>Title</span>
+        <input id="link-title-input" type="text" maxlength="200" />
+      </label>
+
+      <label class="field">
+        <span>URL</span>
+        <input id="link-url-input" type="text" maxlength="2000" placeholder="https://…" />
+      </label>
+
+      <div class="dialog-actions">
+        <button id="link-delete-btn" class="btn danger" type="button">Delete</button>
+        <div class="dialog-actions-right">
+          <button id="link-cancel-btn" class="btn" type="button">Cancel</button>
+          <button id="link-save-btn" class="btn primary" type="submit">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
 </html>
