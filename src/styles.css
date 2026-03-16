@@ -884,9 +884,60 @@ body.dragging .link-item {
     border: 1px solid var(--surface-0);
     border-radius: 10px;
     background: var(--panel-2);
+    max-height: 260px;
+    min-height: 180px;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.task-link-toolbar {
     padding: 10px;
-    max-height: 220px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.task-link-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+}
+
+.task-link-tab {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--surface-0);
+    background: var(--panel-2);
+    cursor: pointer;
+    color: var(--muted-strong);
+}
+
+.task-link-tab:hover {
+    background: color-mix(in srgb, var(--panel-2) 80%, var(--surface-0) 20%);
+}
+
+.task-link-tab.active {
+    border-color: var(--accent);
+    box-shadow: var(--ring-hover);
+    color: var(--text);
+}
+
+.task-link-tab-name {
+    font-size: 0.84rem;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.task-link-panel {
+    min-height: 0;
     overflow: auto;
+    padding: 10px;
     display: grid;
     gap: 10px;
 }
@@ -896,6 +947,9 @@ body.dragging .link-item {
     border-radius: 10px;
     overflow: hidden;
     background: var(--panel);
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
 }
 
 .task-link-group-head {
@@ -916,6 +970,8 @@ body.dragging .link-item {
     display: grid;
     gap: 6px;
     padding: 10px;
+    min-height: 0;
+    overflow: auto;
 }
 
 .task-link-check {

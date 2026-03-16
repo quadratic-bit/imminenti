@@ -22,6 +22,8 @@ export class ModalController {
     private root: Document;
     private attached = false;
     private modal: ModalState | null = null;
+    private activeCollectionId: number | null = null;
+    private selectedLinkIds = new Set<number>();
 
     constructor(private deps: Deps) {
         this.root = deps.root ?? document;
@@ -62,6 +64,18 @@ export class ModalController {
         linksBox.addEventListener("click", async (e) => {
             const target = e.target as HTMLElement;
 
+            const tab = target.closest<HTMLElement>(".task-link-tab");
+            if (tab) {
+                e.preventDefault();
+
+                const id = numId(tab.dataset.collectionId);
+                if (!id || id === this.activeCollectionId) return;
+
+                this.activeCollectionId = id;
+                this.renderLinksBox();
+                return;
+            }
+
             const btn = target.closest<HTMLElement>(".task-link-open-btn");
             if (!btn) return;
 
@@ -74,7 +88,10 @@ export class ModalController {
             let url: string | null = null;
             for (const links of this.deps.state.linksByCollectionId.values()) {
                 const l = links.find((x) => x.id === id);
-                if (l) { url = l.url; break; }
+                if (l) {
+                    url = l.url;
+                    break;
+                }
             }
             if (!url) return;
 
@@ -85,12 +102,24 @@ export class ModalController {
                 alert("Open failed. Check console.");
             }
         });
+        linksBox.addEventListener("change", (e) => {
+            const target = e.target;
+            if (!(target instanceof HTMLInputElement)) return;
+            if (target.type !== "checkbox") return;
+
+            const id = numId(target.dataset.linkId);
+            if (!id) return;
+
+            if (target.checked) this.selectedLinkIds.add(id);
+            else this.selectedLinkIds.delete(id);
+        });
     }
 
     private open(): void {
         const next = this.modal;
         if (!next) return;
 
+        this.initLinksPickerState(next);
         this.render(next);
 
         const dialog = qs<HTMLDialogElement>("#task-dialog", this.root);
@@ -113,7 +142,6 @@ export class ModalController {
 
         const isCreate = next.mode === "create";
         const task     = next.mode === "edit" ? next.task : null;
-        const taskId   = next.mode === "edit" ? next.task.id : null;
         const loc      = isCreate ? next.location : next.task.location;
 
         titleInput.value = task?.title ?? "";
@@ -149,7 +177,7 @@ export class ModalController {
             }
         }
 
-        this.renderLinksBox(taskId);
+        this.renderLinksBox();
     }
 
     openCreate(location: Location): void {
@@ -165,17 +193,20 @@ export class ModalController {
     close(): void {
         const dialog = qs<HTMLDialogElement>("#task-dialog", this.root);
         if (dialog.open) dialog.close();
+
         this.modal = null;
+        this.activeCollectionId = null;
+        this.selectedLinkIds.clear();
     }
 
     async save(): Promise<void> {
         const { state, refresh } = this.deps;
         if (!this.modal) return;
 
-        const checkedLinkIds = Array.from(
-            this.root.querySelectorAll<HTMLInputElement>(`#task-links-box input[type="checkbox"][data-link-id]:checked`)
-        ).map((el) => numId(el.dataset.linkId))
-         .filter((n): n is number => n !== null);
+        const checkedLinkIds = state.linkCollections.flatMap((c) => {
+            const links = state.linksByCollectionId.get(c.id) ?? [];
+            return links.filter((l) => this.selectedLinkIds.has(l.id)).map((l) => l.id);
+        });
 
         const titleInput   = qs<HTMLInputElement>   ("#task-title-input",  this.root);
         const notesInput   = qs<HTMLTextAreaElement>("#task-notes-input",  this.root);
@@ -282,7 +313,42 @@ export class ModalController {
         await refresh();
     }
 
-    private renderLinksBox(taskId: number | null): void {
+    private initLinksPickerState(next: ModalState): void {
+        const { state } = this.deps;
+
+        const taskId = next.mode === "edit" ? next.task.id : null;
+        this.selectedLinkIds = new Set<number>(
+            taskId ? (state.taskLinkIdsByTaskId.get(taskId) ?? []) : []
+        );
+
+        let active: number | null = null;
+
+        for (const c of state.linkCollections) {
+            const links = state.linksByCollectionId.get(c.id) ?? [];
+            if (links.some((l) => this.selectedLinkIds.has(l.id))) {
+                active = c.id;
+                break;
+            }
+        }
+
+        this.activeCollectionId = active ?? state.linkCollections[0]?.id ?? null;
+    }
+
+    private safeCollectionColor(c: string): string {
+        const s = c.trim();
+        return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(s) ? s : "#888888";
+    }
+
+    private shortUrl(u: string): string {
+        try {
+            const x = new URL(u);
+            return x.host + x.pathname;
+        } catch {
+            return u;
+        }
+    }
+
+    private renderLinksBox(): void {
         const { state } = this.deps;
         const box = qs<HTMLDivElement>("#task-links-box", this.root);
 
@@ -291,53 +357,74 @@ export class ModalController {
             return;
         }
 
-        const selected = new Set<number>(taskId ? (state.taskLinkIdsByTaskId.get(taskId) ?? []) : []);
+        const activeCollection =
+            state.linkCollections.find((c) => c.id === this.activeCollectionId)
+            ?? state.linkCollections[0];
 
-        const HEX_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
-        const safeColor = (c: string) => (HEX_RE.test(c.trim()) ? c.trim() : "#888888");
+        if (!activeCollection) {
+            box.innerHTML = `<div class="empty-ongoing">No link collections.</div>`;
+            return;
+        }
 
-        const shortUrl = (u: string) => {
-            try {
-                const x = new URL(u);
-                return x.host + x.pathname;
-            } catch {
-                return u;
-            }
-        };
+        this.activeCollectionId = activeCollection.id;
 
-        box.innerHTML = state.linkCollections.map((c) => {
-            const links = state.linksByCollectionId.get(c.id) ?? [];
-            const swatch = safeColor(c.color);
-
-            const list = links.length === 0
-                ? `<div class="links-empty">No links.</div>`
-                : links.map((l) => {
-                    const checked = selected.has(l.id) ? "checked" : "";
-                    return `
-                      <div class="task-link-check-row">
-                        <label class="task-link-check">
-                          <input type="checkbox" data-link-id="${l.id}" ${checked} />
-                          <div>
-                            <div class="task-link-check-title">${escapeHtml(l.title)}</div>
-                            <div class="task-link-check-url">${escapeHtml(shortUrl(l.url))}</div>
-                          </div>
-                        </label>
-                        <button type="button" class="btn tiny task-link-open-btn" data-link-id="${l.id}">Open</button>
-                      </div>
-                    `;
-                }).join("");
+        const tabsHtml = state.linkCollections.map((c) => {
+            const active = c.id === activeCollection.id ? " active" : "";
+            const swatch = this.safeCollectionColor(c.color);
 
             return `
-                <div class="task-link-group" data-collection-id="${c.id}">
-                    <div class="task-link-group-head">
-                        <div class="collection-swatch" style="background:${swatch};"></div>
-                        <div class="task-link-group-name">${escapeHtml(c.name)}</div>
-                    </div>
-                    <div class="task-link-group-list">
-                        ${list}
-                    </div>
-                </div>
+                <button
+                    type="button"
+                    class="task-link-tab${active}"
+                    data-collection-id="${c.id}"
+                    title="${escapeHtml(c.name)}"
+                >
+                    <span class="collection-swatch" style="background:${swatch};"></span>
+                    <span class="task-link-tab-name">${escapeHtml(c.name)}</span>
+                </button>
             `;
         }).join("");
+
+        const links = state.linksByCollectionId.get(activeCollection.id) ?? [];
+
+        const linksHtml = links.length === 0
+            ? `<div class="links-empty">No links in this collection.</div>`
+            : links.map((l) => {
+                const checked = this.selectedLinkIds.has(l.id) ? "checked" : "";
+                return `
+                    <div class="task-link-check-row">
+                        <label class="task-link-check">
+                            <input type="checkbox" data-link-id="${l.id}" ${checked} />
+                            <div>
+                                <div class="task-link-check-title">${escapeHtml(l.title)}</div>
+                                <div class="task-link-check-url">${escapeHtml(this.shortUrl(l.url))}</div>
+                            </div>
+                        </label>
+                        <button type="button" class="btn tiny task-link-open-btn" data-link-id="${l.id}">Open</button>
+                    </div>
+                `;
+            }).join("");
+
+        const swatch = this.safeCollectionColor(activeCollection.color);
+
+        box.innerHTML = `
+            <div class="task-link-toolbar">
+                <div class="task-link-tabs" role="tablist">
+                    ${tabsHtml}
+                </div>
+            </div>
+
+            <div class="task-link-panel">
+                <div class="task-link-group">
+                    <div class="task-link-group-head">
+                        <div class="collection-swatch" style="background:${swatch};"></div>
+                        <div class="task-link-group-name">${escapeHtml(activeCollection.name)}</div>
+                    </div>
+                    <div class="task-link-group-list">
+                        ${linksHtml}
+                    </div>
+                </div>
+            </div>
+        `;
     }
 }

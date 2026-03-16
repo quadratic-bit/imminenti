@@ -371,7 +371,7 @@ export class DragController {
             getSuppressNextClick: () => deps.state.suppressNextClick,
                 setSuppressNextClick: (v) => (deps.state.suppressNextClick = v),
 
-                swallowClickEls: [weekGridEl, ongoingEl].filter((x): x is HTMLElement => !!x),
+                swallowClickEls: [weekGridEl, ongoingEl].filter((x): x is HTMLDivElement => !!x),
 
                 root: this.root,
         });
